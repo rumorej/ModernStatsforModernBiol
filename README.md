@@ -1,3 +1,3 @@
 # ModernStatsforModernBiol
-MBIO7160 course work
+MBIO7160, Fall 2019
 
