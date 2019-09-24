@@ -1,4 +1,3 @@
 # ModernStatsforModernBiol
-MBIO7160 Course work
+MBIO7160 course work
 
-Commit from R Studio
