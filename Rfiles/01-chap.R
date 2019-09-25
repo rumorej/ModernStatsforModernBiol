@@ -244,6 +244,7 @@ n = length(Celegans$chrM)
 expected = rep(n / 4, 4)
 oenull = replicate(B,
   oestat(e = expected, o = rmultinom(1, n, p = rep(1/4, 4))))
+oenull
 
 ## ----resundernull, echo=FALSE--------------------------------------------
 hist(oenull, breaks = 100, col = "skyblue", main="")
