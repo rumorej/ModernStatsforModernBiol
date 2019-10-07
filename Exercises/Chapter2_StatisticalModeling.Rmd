@@ -1001,7 +1001,7 @@ gf
 rootogram(gf, xlab = "", rect_gp = gpar(fill = "darkgrey"))
 ```
 
-## 2.2 Make a function that generates n random uniform numbers between 0 and 7 and returns their maximum.
+## 2.2 Make a function that generates n random uniform numbers between 0 and 7 and returns their maximum.  Then execute the function for n = 25 and repeat the procedure B = 100 times.  Plot the distribution.
 
 ```{r}
 RN = function(n) {
@@ -1014,10 +1014,9 @@ Fig = (replicate(100, RN(25)))
 histogram(Fig)
 ```
 
-Execute the function for n=25
-Repeat this procedure B = 100 times.
-Plot the distribution of these maxima.
 What is the maximum likelihood estimate of the maximum of a sample of size 25?
+
+...Not entirely sure how to do this, but seems similar to the example on page 23?
 
 ```{r}
 m2.2 = mean(Fig)
@@ -1027,6 +1026,8 @@ m2.2
 ```
 
 Can you find a theoretical justification and the true maximum theta?
+
+...Not too sure
 
 
 ## Exercise 2.3
@@ -1060,7 +1061,7 @@ b) How was the PerThous variable created?
 mtb$Number / mtb$PerThous
 ```
 
-The variable was created....by dividing by 1344
+The variable was created....by dividing by 1344; however, not exactly sure of the significance of this number?
 
 c) Write an R function that you can apply to the table to find which of the amino acids shows the strongest codon bias, i.e., the strongest departure from uniform distribution among its possible spellings.
 
