@@ -680,7 +680,7 @@ y = vapply(rtheta, function(th) {
 hist(y, breaks =50, col ="orange", main= "", xlab = "")
 
 ```
-Question 2.18
+**Question 2.18**
 Verify we can get the same result as the above code chunk by using R's vectorization capabilities
 
 ```{r}
@@ -761,11 +761,9 @@ mean(mcPost2) # mean, by Monte Carlo
 thetas[which.max(densPost2)] # MAP estimate
 ```
 
-Question 2.20
+**Question 2.20**
 Make a histogram of the distribution
-```{r}
-
-```
+...Not quite sure how to do this...
 
 Confidence for the proportion parameter
 ```{r}
@@ -776,7 +774,7 @@ quantile(mcPost2, c(0.025, 0.975))
 
 *Biostrings* package provides tools for working with sequence data, with the essential *classes* *DNAString* and *DNAStringSet*, which allows us to work with one or multiple DNA sequences, respectively.
 
-Question 2.21
+**Question 2.21**
 Explore the *BioStrings* package using the vignette command
 ```{r}
 vignette(package = "Biostrings") # View a list of the manuals in the package
@@ -907,12 +905,12 @@ MI # dinucleotide transition probabilities in CpG islands
 MN = TnI / rowSums(TnI)
 MN # dinucleotide transition probabilities not in CpG islands
 ```
-Question 2.24
+**Question 2.24**
 
 Do the transitions between the bases differ between rows?
   - Yes, they do; the frequency of a transition from an A to T is much different than, a C to T.
 
-Question 2.25
+**Question 2.25**
 
 Are the base frequencies different in CpG islands compared to everywhere else?
 
@@ -930,7 +928,7 @@ freqNon / sum(freqNon)
 ```
 As expected, we have higher frequencies of C and G within the CpG island than we do outside of this region.
 
-Question 2.26
+**Question 2.26**
 
 Use the $\chi^2$ statistic to compare the frequencies
 
@@ -992,7 +990,7 @@ plot(h2, col = rgb(1, 0, 0, 1/4), add = TRUE)
 
 ```{r}
 set.seed(123456789)
-E2.1 = rbinom(0:1000, prob = 0.0001, size = 1000)
+E2.1 = rbinom(1000, prob = 0.0001, size = 1000)
 E2.1
 
 sum(E2.1 == 1) # count the number of mutations
@@ -1006,22 +1004,28 @@ rootogram(gf, xlab = "", rect_gp = gpar(fill = "darkgrey"))
 ## 2.2 Make a function that generates n random uniform numbers between 0 and 7 and returns their maximum.
 
 ```{r}
-n = 25
-set.seed(42345)
-RN = rep.int((runif(n, min = 0, max = 7)), 100)
-RN
-hist(RN)
-Reps = which.max(rep.int(RN, 100))
-Reps
-plot(max(Reps))
+RN = function(n) {
+  runif(n, min = 0, max = 7) %>% which.max
+}
 
+set.seed(122)
+RN(25)
+Fig = (replicate(100, RN(25)))
+histogram(Fig)
 ```
-
 
 Execute the function for n=25
 Repeat this procedure B = 100 times.
 Plot the distribution of these maxima.
 What is the maximum likelihood estimate of the maximum of a sample of size 25?
+
+```{r}
+m2.2 = mean(Fig)
+m2.2
+
+?goodfit
+```
+
 Can you find a theoretical justification and the true maximum theta?
 
 
@@ -1052,14 +1056,24 @@ table(mtb$Codon) %>% sum()
 ```
 b) How was the PerThous variable created?
 
-The variable was created.... 
+```{r}
+mtb$Number / mtb$PerThous
+```
+
+The variable was created....by dividing by 1344
 
 c) Write an R function that you can apply to the table to find which of the amino acids shows the strongest codon bias, i.e., the strongest departure from uniform distribution among its possible spellings.
 
 ```{r}
+condonbias = function(aa) {
+  aa_table = mtb %>% as_tibble %>% filter(mtb$AmAcid == aa)
+aa_table
+#row_max = which.max(aa_table$Number)
+#row_max
+#aa_table$Codon[row_max]
+}
 
-
-library()
+condonbias("Leu")
 ```
 
 ## 2.4 Display GC content in a running window along the sequence of Staphylococcus aureus. 
@@ -1077,6 +1091,7 @@ b) Find the GC content in sequence windows of width 100.
 
 ```{r}
 Nuc_sum = letterFrequency(staph, letters="ACGT", OR=0) # view letter frequency across all sequences
+Nuc_sum
 
 window = 100 # compute the GC content in a sliding window (as a fraction) 
 gc = letterFrequencyInSlidingView(staph[[364]], 100, "GC")
