@@ -1066,15 +1066,15 @@ The variable was created....by dividing by 1344; however, not exactly sure of th
 c) Write an R function that you can apply to the table to find which of the amino acids shows the strongest codon bias, i.e., the strongest departure from uniform distribution among its possible spellings.
 
 ```{r}
-condonbias = function(aa) {
-  aa_table = mtb %>% as_tibble %>% filter(mtb$AmAcid == aa)
-aa_table
-#row_max = which.max(aa_table$Number)
-#row_max
-#aa_table$Codon[row_max]
+codonbias = function(aa) {
+  aa = mtb[mtb$AmAcid == aa, "Number"]
+aa/sum(aa)
 }
 
-condonbias("Leu")
+aa = c("Ala", "Arg", "Asn", "Asp", "Cys", "Glu", "Gln", "Gly", "His", "Ile", "Leu", "Lys", "Met", "Phe", "Pro", "Ser", "Thr", "Trp", "Tyr", "Val", "End")
+
+sapply(aa, codonbias)
+
 ```
 
 ## 2.4 Display GC content in a running window along the sequence of Staphylococcus aureus. 
