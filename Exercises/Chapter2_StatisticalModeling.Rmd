@@ -1065,17 +1065,104 @@ The variable was created....by dividing by 1344; however, not exactly sure of th
 
 c) Write an R function that you can apply to the table to find which of the amino acids shows the strongest codon bias, i.e., the strongest departure from uniform distribution among its possible spellings.
 
+The function below is used to determine codon bias within EACH amino acid.
+
 ```{r}
-codonbias = function(aa) {
-  aa = mtb[mtb$AmAcid == aa, "Number"]
-aa/sum(aa)
+codonbias <- function(aa){
+  #choose aa
+  aa_table <- mtb %>% as_tibble %>% filter(mtb$AmAcid == aa)
+  
+  #add observed frequencies of codon usage by factoring total counts
+  aa_table <- mutate(aa_table, obs_freq = aa_table$Number / sum(aa_table$Number))
+  
+  #add expected frequency based on 1/number of codons
+  aa_table <- mutate(aa_table, exp_freq = 1/nrow(aa_table))
+  
+  #find the difference between observed and expected frequencies
+  aa_table <- mutate(aa_table, usage_diff = obs_freq - exp_freq)
+  
+  print(aa_table)
+  row_max <- which.max(abs(aa_table$usage_diff))
+  
+  #required if the bias is AGAINST using a codon
+  if(nrow(aa_table) > 2 && aa_table$usage_diff[row_max] < 0){
+    print("Codon bias against, aka bias towards not using it")
+    print(aa_table$Codon[row_max])
+  }
+  
+  #requied if the bias is FOR using a codon
+  else if (nrow(aa_table) > 2 && aa_table$usage_diff[row_max] > 0){
+    print("Codon bias for, aka bias towards using it")
+    print(aa_table$Codon[row_max])
+  }
+  
+  #two codons availble means equal bias for/against
+  else if (nrow(aa_table) == 2) {
+    print("Only two available codons, usage for both codons deviates the same, equal bias")
+    print(aa_table$Codon)
+  }
+  
+  #one codon available means no bias possible
+  else if (nrow(aa_table) == 1){
+    print("Only one available codon")
+  }
 }
 
-aa = c("Ala", "Arg", "Asn", "Asp", "Cys", "Glu", "Gln", "Gly", "His", "Ile", "Leu", "Lys", "Met", "Phe", "Pro", "Ser", "Thr", "Trp", "Tyr", "Val", "End")
-
-sapply(aa, codonbias)
-
 ```
+
+```{r}
+codonbias("Leu")
+```
+
+The function below is used to determine codon bias in Mtb dataset among ALL amino acids.
+
+```{r}
+codonbias2 <- function(){
+  #prime with stop codon
+  stop_table <- mtb %>% as_tibble %>% filter(mtb$AmAcid == "End")
+  
+  #finding observed frequencies for end
+  stop_table <- mutate(stop_table, obs_freq = stop_table$Number / sum(stop_table$Number))
+  #add expected frequency based on 1/number of codons
+  stop_table <- mutate(stop_table, exp_freq = 1/nrow(stop_table))
+  
+  #find the difference between observed and expected frequencies
+  stop_table <- mutate(stop_table, usage_diff = obs_freq - exp_freq)
+  
+  #aa vector
+  aas <- c("Gly", "Glu", "Asp", "Val", "Ala", "Pro", "Leu", "Ile", "His", "Gln", "Arg", "Ser", "Phe", "Tyr", "Cys", "Thr", "Asn", "Lys", "Val")
+  
+  #add observed frequencies of codon usage by factoring total counts for all aas not stop
+  for (query_aa in aas){
+  each_aa_table <- mtb %>% as_tibble %>% filter(mtb$AmAcid == query_aa)
+  
+  #finding observed frequencies for aas
+  each_aa_table <- mutate(each_aa_table, obs_freq = each_aa_table$Number / sum(each_aa_table$Number))
+  #add expected frequency based on 1/number of codons
+  each_aa_table <- mutate(each_aa_table, exp_freq = 1/nrow(each_aa_table))
+  
+  #find the difference between observed and expected frequencies
+  each_aa_table <- mutate(each_aa_table, usage_diff = obs_freq - exp_freq)
+  
+  #add table back to aa_table
+  stop_table <- full_join(stop_table, each_aa_table, by = c("AmAcid", "Codon", "Number", "PerThous", "obs_freq", "exp_freq", "usage_diff"))
+  }
+  
+  stop_table %>%  print(n = Inf)
+  row_max <- which.max(stop_table$usage_diff)
+  print("Bias for")
+  print(stop_table$Codon[row_max])
+  row_min <- which.min(stop_table$usage_diff)
+  print("Bias against")
+  print(stop_table$Codon[row_min])
+}
+```
+
+```{r}
+codonbias2()
+```
+
+With respect to the mtb data we explored, Ile and Phe appear to have the strongest codon bias.
 
 ## 2.4 Display GC content in a running window along the sequence of Staphylococcus aureus. 
 
