@@ -27,6 +27,7 @@ library(mosaics)
 library(mosaic)
 library(mosaicsExample)
 library(HistData)
+library(boot)
 
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -363,26 +364,28 @@ ggplot(tibble(medians = meds), aes(x = medians)) +
 **Question 4.12**
 Estimate a 99% confidence interval for the median based on the simulations.
 
-Need to fix code below...
-
 ```{r}
-?qdata
+summary(meds)
 
-Q99 = qdata(meds, c(0.01,.99)) #qdata is from mosaic pkg
-Q99
+wilcox.test(meds,
+            alternative="two.sided",
+            correct=TRUE,
+            conf.int=TRUE,
+            conf.level=0.99) # Not sure if this is correct...
 
-hist(Q99$quantile)
-
-abline(v = Q99$Q99, col = "blue" ,lwd = 3)
 ```
 **Question 4.13**
 Use the bootstrap package to redo the analysis.
 
-Need to revist this...
-
 ```{r}
-bootmean = bootstrap(ZeaMays$diff, B, mean)
-bootmedian = bootstrap(ZeaMays$diff, B, median)
+?boot
+Mboot = boot(ZeaMays$diff,
+             function(x,i) median(x[i]),
+             R=1000) # Generate boostrap stats for ZeaMays$diff
+
+?boot.ci
+boot.ci(Mboot, conf = 0.99) # Is this correct?
+       
 ```
 **Question 4.14**
 If a sample is composed of n = 3 different values, how many different bootstrap resamples are possible?  What about n = 15?
