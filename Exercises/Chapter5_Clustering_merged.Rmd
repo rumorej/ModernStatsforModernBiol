@@ -123,6 +123,7 @@ Compare the Jaccard distance between mutations in the HIV dat mut to the correla
 library("vegan")
 mutJ = vegdist(mut, "jaccard")
 mutC = sqrt(2 * (1 - cor(t(mut))))
+mutC
 mutJ
 as.dist(mutC)
 ```
@@ -163,6 +164,10 @@ Useful for identifying spherial-shaped clusters that are compact, similar in siz
 How does the *k*-means algorithm differ from the EM algorithm?
 
 In the EM algorithm, each point participates in the computation of the mean of all groups through a probabilistic weight, while the points are either attributed to a cluster or not in the *k*-means algorithm, so each point participates only in the computation of the center of one cluster.
+
+## Tight Clusters with Resampling
+
+Repeating a clustering procedure numerous times on the same data with different starting points can be used to identify tight clusters, which correspond to clusters that are "almost always" grouped together.
 
 **Question 5.4**
 Follow the vignette of the package *clusterExperiment* to generate Figure 5.10
@@ -497,7 +502,7 @@ load("/MBIO7160/ModernStatsforModernBiol/RData/Morder.RData")
 Euc = as.matrix(dist(Morder, method = "euclidean"))
 
 #Create heatmap
-pheatmap(Euc, cluster_rows=FALSE, cluster_cols=FALSE, show_colnames = TRUE, show_rownames = TRUE)
+pheatmap(Euc, cluster_rows=FALSE, cluster_cols=FALSE, show_colnames = TRUE, show_rownames = TRUE, scale = "column")
 
 #Manhattan only
 #Generate Matrix
@@ -536,12 +541,13 @@ It is important to assess the quality of clustering to ensure the interpretation
 
 A number of different algorithms can be used for cluster validation.
 
-WSS
-+ Within-group sum of squares
-+ Maximize the between-groups differences while maintaining a small within-group distance
-+ Compare value across different values of *k*
-+ Pronounced region of a steep decrease and then plateau (i.e., elbow) considered a potential "sweet spot" for the number of clusters
-  + Adding another cluster does not improve the WSS by much
+
+* WSS
+  + Within-group sum of squares
+  + Maximize the between-groups differences while maintaining a small within-group distance
+  + Compare value across different values of *k*
+  + Pronounced region of a steep decrease and then plateau (i.e., elbow) considered a potential "sweet spot" for the number of clusters
+    + Adding another cluster does not improve the WSS by much
 
 
 To better understand the various methods that can be used to deteremine the number of optimal clusters for the data, it can be helpful to look at cases where the answer is actually known.
