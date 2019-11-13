@@ -1,0 +1,816 @@
+---
+title: "Chapter7_Multivariate_Analysis"
+author: "Jill R"
+date: "11/10/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(here)
+library(phyloseq)
+library(SummarizedExperiment)
+library(ggplot2)
+library(dplyr)
+library(GGally)
+library(pheatmap)
+library(factoextra)
+library(ade4)
+library(Hiiragi2013)
+library(devtools)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Matrices
+
+Painted Turtle Example
+
+```{r}
+turtles = read.table("/MBIO7160/ModernStatsforModernBiol/RData/PaintedTurtles.txt", header = TRUE)
+turtles[1:4, ]
+```
+
+Athlete Example
+
+```{r}
+load("/MBIO7160/ModernStatsforModernBiol/RData/athletes.RData")
+athletes[1:3, ]
+```
+
+Cell Types Example
+
+Data set contains gene expression profiles of sorted T-cell populations for 156 genes that show differential expression between cell types.
+
+```{r}
+load("/MBIO7160/ModernStatsforModernBiol/RData/Msig3transp.RData")
+round(Msig3transp,2)[1:5, 1:6]
+```
+
+Bacterial Species Abundance
+
+```{r}
+data("GlobalPatterns", package = "phyloseq")
+GPOTUs = as.matrix(t(phyloseq::otu_table(GlobalPatterns)))
+GPOTUs[1:4, 6:13]
+```
+
+mRNA reads
+
+```{r}
+data("airway", package = "airway")
+assay(airway)[1:3, 1:4]
+```
+
+Proteomics Example
+
+```{r}
+metab = t(as.matrix(read.csv("/MBIO7160/ModernStatsforModernBiol/RData/metabolites.csv", row.names = 1)))
+metab[1:4, 1:4]
+```
+
+Tabulate the frequency of zeros in the metlab and GPOTUs Matrices.
+
+metlab
+
+```{r}
+#Calculate Total Zero in metlab
+TotalZero_metlab = sum(table(colSums(metab == 0)))
+TotalZero_metlab
+#Calculate Total non-zero in metlab
+TotalnonZero_metlab = sum(table(colSums(metab != 0)))
+TotalnonZero_metlab
+#Calculate Freq of zero in metlab
+FreqZero_metlab = TotalZero_metlab / (TotalnonZero_metlab + TotalZero_metlab)
+FreqZero_metlab
+```
+
+GPOTUs
+```{r}
+#Calculate Total Zero in metlab
+TotalZero_GPOTU = sum(table(colSums(GPOTUs == 0)))
+TotalZero_GPOTU
+#Calculate Total non-zero in metlab
+TotalnonZero_GPOTU = sum(table(colSums(GPOTUs != 0)))
+TotalnonZero_GPOTU
+#Calculate Freq of zero in metlab
+FreqZero_GPOTU = TotalZero_GPOTU / (TotalnonZero_GPOTU + TotalZero_GPOTU)
+FreqZero_GPOTU
+```
+
+**Question 7.1**
+
+(a) What are the columns called?
+
+Subjects
+
+
+(b) What are the rows called?
+
+Features
+
+(c) What does a cell in a matrix represent?
+
+Observation/ Entry
+
+(d) How do you view the third variable for the fifth althlete in the data matrix called athletes?
+
+```{r}
+athletes[3, 5]
+```
+
+
+## Low Dimensional Data
+
+Correlation coefficent measures how the variables co-vary.
+
+**Question 7.2**
+
+
+Compute the matrix of all correlations between the measurements from the turtles data.  What do you notice?
+
+```{r}
+turtles
+
+#remove categorial variable "sex" and compute correlation matrix
+cor(turtles[, -1])
+```
+
+Beneficial to start a multidimensional analysis by checking the simple one-dimensional and two-dimensional summary stats and making visual displays.
+
+**Question 7.3**
+
+Figure 7.2: All pairs of bivariate scatterplots for the 3 biometric measurements on painted turtles.
+```{r}
+ggpairs(turtles[, -1], axisLabels = "none")
+```
+
+Length, width and height all appears to be correlated; reflect the same "underlying" variable = size of the turtle.
+
+**Question 7.4**
+
+Make a pairs of plot of the athletes data.  What do you notice?
+
+```{r}
+ggpairs(athletes)
+```
+
+Difficult to interpret with lots of dimensions; a heat map would be better.
+
+```{r}
+pheatmap(cor(athletes), cellwidth = 10, cellheight = 10)
+```
+
+Hierarchical clustering of athletes into classes based on disiplines; running, throwing and jumping.
+
+
+## Preprocessing the data
+
+Different variables are often measured in different units, thus, they are not directly comparable in their original form.
+
+Need to transform the numeric values to a common scale to make the comparisons meaningful.
+
+R function *scale* = given a matrix or a dataframe, the function makes every column have a mean of 0 and a standard deviation of 1.
+
+**Question 7.5**
+
+```{r}
+apply(turtles[,-1], 2, sd)
+apply(turtles[,-1], 2, mean)
+scaledTurtles = scale(turtles[, -1])
+apply(scaledTurtles, 2, mean)
+apply(scaledTurtles, 2, sd)
+data.frame(scaledTurtles, sex = turtles[, 1]) %>%
+  ggplot(aes(x = width, y = height, group = sex)) +
+    geom_point(aes(color = sex)) + coord_fixed()
+```
+
+## Dimension Reduction
+
+Principle Component Analysis (PCA)
+
++ Unsupervised learning technique
+  + Treats all variables as having the same status
++ Exploratory technique to capture relations between varibale and between observations in a useful way
++ Linear technique
+  + Look for linear relations between the variables to make downstream computations easier
+  
+## Lower-dimensional projections
+
+R code for Figure 7.6
+
+```{r}
+scaledathletes = data.frame(scale(athletes))
+ath_gg = ggplot(scaledathletes, aes(x = weight, y = disc)) +
+  geom_point(size = 2, shape = 21)
+ath_gg + geom_point(aes(y = 0), colour = "red") +
+  geom_segment(aes(xend = weight, yend = 0), linetype = "dashed")
+```
+
+
+```{r}
+#Plot projection lines on y-axis
+ath_gg = ggplot(scaledathletes, aes(x = weight, y = disc)) +
+  geom_point(size = 2, shape = 21)
+ath_gg + geom_point(aes(x = 0), colour = "red") +
+  geom_segment(aes(xend = 0, yend = disc), linetype = "dashed")
+```
+
+
+**Regression of the disc variable on weight**
+
+Use the *lm* (linear model) function to find the regression line.
+
+```{r}
+reg1 = lm(disc ~ weight, data = scaledathletes)
+a1 = reg1$coefficients[1] # intercept
+b1 = reg1$coefficients[2] # slope
+pline1 = ath_gg + geom_abline(intercept = a1, slope = b1,
+    col = "blue", lwd = 1.5)
+pline1 + geom_segment(aes(xend = weight, yend = reg1$fitted),
+    colour = "red", arrow = arrow(length = unit(0.15, "cm")))
+```
+
+**Regression of weight on disc**
+
+```{r}
+reg2 = lm(weight ~ disc, data = scaledathletes)
+a2 = reg2$coefficients[1] # intercept
+b2 = reg2$coefficients[2] # slope
+pline2 = ath_gg + geom_abline(intercept = -a2/b2, slope = 1/b2,
+    col = "darkgreen", lwd = 1.5)
+pline2 + geom_segment(aes(xend=reg2$fitted, yend=disc),
+    colour = "orange", arrow = arrow(length = unit(0.15, "cm")))
+```
+
+Relationship differs depending on which variable is chosen as the predictor and which is chosen as the response.
+
+**Question 7.6**
+
+Compare the variance of Figure 7.7 to the original axes, weight and disc.
+
+```{r}
+var(scaledathletes$weight) + var(reg1$fitted)
+```
+
+The variances of the points along the original axes weight and disc are 1 since the variables were scaled.
+
+
+**A line that minimizes distances in both directions**
+
+```{r}
+xy = cbind(scaledathletes$disc, scaledathletes$weight)
+svda = svd(xy)
+pc = xy %*% svda$v[, 1] %*% t(svda$v[, 1])
+bp = svda$v[2, 1] / svda$v[1, 1]
+ap = mean(pc[, 2]) - bp * mean(pc[, 1])
+ath_gg + geom_segment(xend = pc[, 1], yend = pc[, 2]) +
+  geom_abline(intercept = ap, slope = bp, col = "purple", lwd = 1.5)
+```
+
+The purple principal component line mimimizes the sums of squares of the orthogonal projections.
+
+Figure 7.10
+
+```{r}
+pline1 + geom_segment(aes(xend = weight, yend = reg1$fitted), colour = "blue", alpha = 0.35) +
+  geom_abline(intercept = -a2/b2, slope = 1/b2, col = "darkgreen", lwd = 1.5, alpha = 0.8) +
+  geom_segment(aes(xend = reg2$fitted, yend = disc), colour = "orange", alpha = 0.35) +
+  geom_abline(intercept = ap, slope = bp, col = "purple", lwd = 1.5, alpha = 0.8) +
+  geom_segment(xend = pc[, 1], yend = pc[, 2], colour = "purple", alpha = 0.35) + coord_fixed()
+```
+
+**Question 7.8**
+
+Compute the variance of the points on the purple line.
+
+```{r}
+apply(pc, 2, var)
+sum(apply(pc, 2, var))
+```
+
+## Optimal Lines
+
+
+**Question 7.10**
+
+What is the object in Figure 7.11?
+
+Hard to tell; some kind of ruminant?
+
+**Question 7.11**
+
+Figure 7.13 is WAY more informative; way more information about the objet is conveyed in this projection.
+
+
+## PCA Workflow
+
+
+Based on the principle of finding the axis showing the largest variability.
+
+```{r}
+X = matrix(c(780,  75, 540,
+             936,  90, 648,
+            1300, 125, 900,
+             728,  70, 504), nrow = 3)
+u = c(0.8196, 0.0788, 0.5674)
+v = c(0.4053, 0.4863, 0.6754, 0.3782)
+s1 = 2348.2
+sum(u^2)
+sum(v^2)
+s1 * u %*% t(v)
+X - s1 * u %*% t(v)
+```
+
+**Question 7.14**
+
+Look at the output of svd(X)
+
+```{r}
+?svd # Singular value decomposition of a matrix
+svd(X)$u[, 1]
+svd(X)$v[, 1]
+sum(svd(X)$u[, 1]^2)
+sum(svd(X)$v[, 1]^2)
+svd(X)$d
+```
+
+
+**How to find a decomposition in a unique way**
+
+```{r}
+Xtwo = matrix(c(12.5, 35.0, 25.0, 25, 9, 14, 26, 18, 16, 21, 49, 32,
+       18, 28, 52, 36, 18, 10.5, 64.5, 36), ncol = 4, byrow = TRUE)
+USV = svd(Xtwo)
+```
+
+**Question 7.15**
+
+Look at teh USV object.  What are its components?
+
+```{r}
+names(USV)
+USV$d
+```
+
+**Question 7.16**
+
+How does each pair of singular vectors improve our approximation to Xtwo?
+
+```{r}
+Xtwo - USV$d[1] * USV$u[, 1] %*% t(USV$v[, 1])
+Xtwo - USV$d[1] * USV$u[, 1] %*% t(USV$v[, 1]) -
+       USV$d[2] * USV$u[, 2] %*% t(USV$v[, 2])
+
+```
+
+Values are very small and therefore do not improve the approximation.
+
+
+Check the orthonormality of U and V matrices
+
+```{r}
+t(USV$u) %*% USV$u
+t(USV$v) %*% USV$v
+```
+
+Submit rescaled turtles matrix to a singular value decomposition.
+
+```{r}
+turtles.svd = svd(scaledTurtles)
+turtles.svd$d
+turtles.svd$v
+dim(turtles.svd$u)
+
+sum(turtles.svd$v[,1]^2)
+sum(turtles.svd$d^2) / 47
+```
+
+Column 1 shows that the coefficients for the first 3 variables are practically equal.
+
+
+**Question 7.18**
+
+Compute the first principal component for the turtles data.
+
+```{r}
+turtles.svd$d[1] %*% turtles.svd$u[,1]
+scaledTurtles %*% turtles.svd$v[,1]
+```
+
+**Question 7.19**
+
+What part of the output of the svd function leads us to the first PC coefficients?
+
+```{r}
+svda$v[,1]
+```
+
+Rotate the plane...
+
+```{r}
+ppdf = tibble(PC1n = -svda$u[, 1] * svda$d[1],
+              PC2n = svda$u[, 2] * svda$d[2])
+ggplot(ppdf, aes(x = PC1n, y = PC2n)) + geom_point() + xlab("PC1 ")+
+    ylab("PC2") + geom_point(aes(x=PC1n,y=0),color="red") +
+    geom_segment(aes(xend = PC1n, yend = 0), color = "red") +
+    geom_hline(yintercept = 0, color = "purple", lwd=1.5, alpha=0.5) +
+    xlim(-3.5, 2.7) + ylim(-2,2) + coord_fixed()
+segm = tibble(xmin = pmin(ppdf$PC1n, 0), xmax = pmax(ppdf$PC1n, 0), yp = seq(-1, -2, length = nrow(ppdf)), yo = ppdf$PC2n)
+ggplot(ppdf, aes(x = PC1n, y = PC2n)) + geom_point() + ylab("PC2") + xlab("PC1") +
+    geom_hline(yintercept=0,color="purple",lwd=1.5,alpha=0.5) +
+    geom_point(aes(x=PC1n,y=0),color="red")+
+    xlim(-3.5, 2.7)+ylim(-2,2)+coord_fixed() +
+    geom_segment(aes(xend=PC1n,yend=0), color="red")+
+    geom_segment(data=segm,aes(x=xmin,xend=xmax,y=yo,yend=yo), color="blue",alpha=0.5)
+```
+
+**Question 7.20**
+
+(a) What is the mean of the sum of squares of the red segments?
+
+```{r}
+svda$d[2]^2
+```
+
+(b) What is the variance?
+
+```{r}
+var(ppdf$PC1n)
+```
+
+(c) Compute the ratio of the standard deviation of the red segments.
+
+```{r}
+sd(ppdf$PC1n)/sd(ppdf$PC2n)
+svda$d[1]/svda$d[2]
+```
+
+```{r}
+?prcomp
+
+prcomp(scaledathletes)
+svd(scaledathletes)
+```
+
+**PCA of the Turtles Data**
+
+Use the function *princomp*, which returns a list of all the important pieces of information needed to plot and interpret a PCA.
+
+```{r}
+cor(scaledTurtles)
+pcaturtles = princomp(scaledTurtles)
+pcaturtles
+
+fviz_eig(pcaturtles, geom = "bar", bar_width = 0.4) + ggtitle("")
+```
+
+**Question 7.21**
+
+Compare 3 PCA functions.
+
+```{r}
+svd(scaledTurtles)$v[, 1]
+prcomp(turtles[, -1])$rotation[, 1]
+princomp(scaledTurtles)$loadings[, 1]
+dudi.pca(turtles[, -1], nf = 2, scannf = FALSE)$c1[, 1] #install package ade4
+
+#disable prcomp and primcomp
+svd(scaledTurtles)$v[, 1]
+#prcomp(turtles[, -1])$rotation[, 1] 
+#princomp(scaledTurtles)$loadings[, 1]
+dudi.pca(turtles[, -1], nf = 2, scannf = FALSE)$c1[, 1] #install package ade4
+```
+
+**Question 7.22**
+
+```{r}
+res = princomp(scaledTurtles)
+PC1 = scaledTurtles %*% res$loadings[,1]
+sd1 = sqrt(mean(res$scores[, 1]^2))
+```
+
+Combine both the PC scores and the loading coefficients.
+
+```{r}
+fviz_pca_biplot(pcaturtles, label = "var", habillage = turtles[, 1]) +
+  ggtitle("")
+```
+
+**Question 7.26**
+
+Compare the variance of each new coordinate to the eigenvalues returned by PCA dudi.pca function.
+
+```{r}
+pcadudit = dudi.pca(scaledTurtles, nf = 2, scannf = FALSE)
+apply(pcadudit$li, 2, function(x) sum(x^2)/48)
+pcadudit$eig
+
+#plot
+fviz_pca_var(pcaturtles, col.circle = "black") + ggtitle("") +
+  xlim(c(-1.2, 1.2)) + ylim(c(-1.2, 1.2))
+```
+
+What is an eigenvalue?
+
+"eigenvector is a vector—different from the null vector—which does not change direction in the transformation (except if the transformation turns the vector to the opposite direction). The vector may change its length, or become zero ("null"). The eigenvalue is the value of the vector's change in length. The word "eigen" is a German word, and means "its own"."
+(https://simple.wikipedia.org/wiki/Eigenvalues_and_eigenvectors)
+
+## A complete analysis: decathalon athletes
+
+Load the data
+
+```{r}
+cor(scaledathletes) %>% round(1)
+```
+
+Look at screeplot to determine *k*
+
+```{r}
+pca.ath = dudi.pca(scaledathletes, scannf = FALSE)
+pca.ath$eig
+fviz_eig(pca.ath, geom = "bar", bar_width = 0.3) + ggtitle("")
+```
+
+The screeplot tells us to use a 2 component plot.  These values actually represen the eigenvalues.
+
+Change the signs of the running variables and plot the correlation circle.
+
+```{r}
+athletes[, c(1, 5, 6, 10)] = -athletes[, c(1, 5, 6, 10)]
+cor(scaledathletes) %>% round(1)
+pcan.ath = dudi.pca(athletes, nf = 2, scannf = FALSE)
+pcan.ath$eig
+fviz_pca_var(pcan.ath, col.circle="black") + ggtitle("")
+```
+
+Plot the athletes projected in the first principal plane.
+
+```{r}
+fviz_pca_ind(pcan.ath) + ggtitle("") + ylim(c(-2.5,5.7))
+```
+
+Numbers appear to go from low to high.
+
+```{r}
+data("olympic", package = "ade4")
+olympic$score
+
+#plot
+p = ggplot(tibble(pc1 = pcan.ath$li[, 1], score = olympic$score, id = rownames(athletes)),
+   aes(x = score, y = pc1, label = id)) + geom_text()
+p + stat_smooth(method = "lm", se = FALSE)
+```
+
+Why does the athlete number 1 have the highest score but not the highest value for the PC1 liner combination?
+
+
+## PCA as an exploratory tool
+
+PCA treats all variables equally, but other continuous variables or categorical factors can be mapped onto the plot.
+
+T-cell expression PCA screeplot
+
+```{r}
+pcaMsig3 = dudi.pca(Msig3transp, center = TRUE, scale = TRUE,
+                    scannf = FALSE, nf = 4)
+fviz_screeplot(pcaMsig3) + ggtitle("")
+
+ids = rownames(Msig3transp)
+celltypes = factor(substr(ids, 7, 9))
+status = factor(substr(ids, 1, 3))
+table(celltypes)
+cbind(pcaMsig3$li, tibble(Cluster = celltypes, sample = ids)) %>%
+ggplot(aes(x = Axis1, y = Axis2)) +
+  geom_point(aes(color = Cluster), size = 5) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  scale_color_discrete(name = "Cluster") + coord_fixed()
+```
+
+PCA plot of gene expression for a subset of 156 genes.  Plot is elongated along the first axis, as that explains much of the variance.  Also, one of the T-cells seems to be mis-labelled.
+
+## Mass spectroscopy data
+
+```{r}
+load("/MBIO7160/ModernStatsforModernBiol/RData/mat1xcms.RData")
+dim(mat1)
+pcamat1 = dudi.pca(t(mat1), scannf = FALSE, nf = 3)
+fviz_eig(pcamat1, geom = "bar", bar_width = 0.7) + ggtitle("")
+
+dfmat1 = cbind(pcamat1$li, tibble(
+    label = rownames(pcamat1$li),
+    number = substr(label, 3, 4),
+    type = factor(substr(label, 1, 2))))
+pcsplot = ggplot(dfmat1,
+  aes(x=Axis1, y=Axis2, label=label, group=number, colour=type)) +
+ geom_text(size = 4, vjust = -0.5)+ geom_point(size = 3)+ylim(c(-18,19))
+pcsplot + geom_hline(yintercept = 0, linetype = 2) +
+  geom_vline(xintercept = 0, linetype = 2)
+
+
+#alternative plot
+pcsplot + geom_line(colour = "red")
+```
+
+Wild-type always appears to be above the knockout.
+
+
+## Biplots and Scaling
+
+Plot the two-dimensional correlations and a heatmap of the variables.
+
+```{r}
+load("/MBIO7160/ModernStatsforModernBiol/RData/wine.RData")
+load("/MBIO7160/ModernStatsforModernBiol/RData/wineClass.RData")
+wine[1:2, 1:7]
+pheatmap(1 - cor(wine), treeheight_row = 0.2)
+```
+
+Make a PCA biplot
+
+```{r}
+winePCAd = dudi.pca(wine, scannf=FALSE)
+table(wine.class)
+fviz_pca_biplot(winePCAd, geom = "point", habillage = wine.class,
+   col.var = "violet", addEllipses = TRUE, ellipse.level = 0.69) +
+   ggtitle("") + coord_fixed()
+```
+
+Small angles between the vectors Phenols, Flav and Proa indicate they are strongly correlated, whereas Hue and Alcholo are uncorrelated.
+
+Observations correspond to dots colored according to the type of wine.
+
+
+## Weighted PCA
+
+If the groups have different sizes, may want to weigh the different groups of observations.
+
+Select the wild-type samples and the top 100 features with the highest overall variance.
+
+```{r}
+data("x", package = "Hiiragi2013")
+xwt = x[, x$genotype == "WT"]
+sel = order(rowVars(Biobase::exprs(xwt)), decreasing = TRUE)[1:100]
+xwt = xwt[sel, ]
+tab = table(xwt$sampleGroup)
+tab
+```
+
+Groups are represented unequally.  To account for this, each sample is reweighed by the inverse of its group size.
+
+```{r}
+xwt$weight = 1 / as.numeric(tab[xwt$sampleGroup])
+pcaMouse = dudi.pca(as.data.frame(t(Biobase::exprs(xwt))),
+  row.w = xwt$weight,
+  center = TRUE, scale = TRUE, nf = 2, scannf = FALSE)
+fviz_eig(pcaMouse) + ggtitle("")
+
+#plot
+fviz_pca_ind(pcaMouse, geom = "point", col.ind = xwt$sampleGroup) +
+  ggtitle("") + coord_fixed()
+```
+
+## Exercises
+
+
+**7.1**
+
+From https://en.wikipedia.org/wiki/Singular_value_decomposition
+
+"If all singular values of a square matrix M are non-degenerate and non-zero, then its singular value decomposition is unique"
+
+"The singular value decomposition is very general in the sense that it can be applied to any m × n matrix whereas eigenvalue decomposition can only be applied to diagonalizable matrices"
+
+(a) If *X* has no rows and no columns that are all zeros, then is the decomposition unqiue?
+
+
+Yes; refer to sentence above from Wikipedia
+
+
+"Rank of a matrix is defined as (a) the maximum number of linearly independent column vectors in the matrix or (b) the maximum number of linearly independent row vectors in the matrix. Both definitions are equivalent."
+
+* For an r x c matrix
+ + If r is less than c, then the maximum rank of the matrix is r.
+ + If r is greater than c, then the maximum rank of the matrix is c.
+
+https://stattrek.com/matrix-algebra/matrix-rank.aspx
+
+
+(b) Generate a rank-1 matrix
+
+
+Note: A rank-one matrix is the product of two vectors.
+
+```{r}
+u = seq(2, 30, by = 2)
+u
+v = seq(3, 12, by = 3)
+v
+t(v) # transpose columns and rows
+X1 = u %*% t(v)
+X1
+```
+
+Each cell in v is multipled by each cell in v to create a rank-1 matrix (15X4 matrix).
+
+
+(c) Add some noise to the matrix.
+
+```{r}
+Materr = matrix(rnorm(60,1),nrow=15,ncol=4)
+X = X1+Materr
+X
+X = data.frame(X)
+
+#Visualize
+ggpairs(X, axisLabels = "none")
+ggplot(data = data.frame(X), aes(x = X1, y = X2, col = X3, size = X4)) + geom_point()
+```
+
+(d) Redo the same analysis with a rank-2 matrix
+
+Example of what a rank-2 matrix is...(https://stattrek.com/matrix-algebra/matrix-rank.aspx)
+
+"Columns 1 and 2 are independent, because neither can be derived as a scalar multiple of the other. However, column 3 is linearly dependent on columns 1 and 2, because column 3 is equal to column 1 plus column 2. That leaves the matrix with a maximum of two linearly independent columns"
+
+```{r}
+
+B = matrix(c(1, 2, 3, 4, 2, 3, 4, 5, 3, 5, 7, 9), nrow=4, ncol=3)
+B
+```
+Add some noise...
+
+```{r}
+Materr = matrix(rnorm(60,1),nrow=4,ncol=3)
+X2 = B+Materr
+X2
+X2 = data.frame(X2) # turn into dataframe for plotting
+X2
+
+#Visualize
+ggpairs(X2, axisLabels = "none")
+ggplot(X2, aes(x = X1, y = X2, col = X3)) + geom_point()
+```
+
+First and second columns and not strongly correlated.
+
+**7.2**
+
+(a) Create a matrix of highly correlated bivariate data.
+
+```{r}
+library(MASS)
+
+mu1 = 1; mu2 = 2; s1=2.5; s2=0.8; rho=0.9;
+sigma = matrix(c(s1^2, s1*s2*rho, s1*s2*rho, s2^2),2)
+
+sim2d = data.frame(mvrnorm(50, mu = c(mu1,mu2), Sigma = sigma))
+svd(scale(sim2d))$d
+svd(scale(sim2d))$v[,1]
+ggplot(data.frame(sim2d),aes(x=X1,y=X2)) +
+    geom_point()
+```
+
+(b) Perform PCA
+
+```{r}
+princomp(sim2d)
+respc=princomp(sim2d)
+dfpc = data.frame(pc1=respc$scores[,1],
+pc2 = respc$scores[,2])
+ ggplot(dfpc,aes(x=pc1,y=pc2)) +
+   geom_point() + coord_fixed(2)
+```
+
+Show the rotated Principal Component Axes
+
+```{r}
+
+```
+
+
+**7.3**
+
+Why is the plotting region elgonated in Figure 7.35?
+
+
+This is because most of the variance is explained by the first dimension, and therefore, will represent a larger space in the figure.
+
+
+What happens if you don't use *coord_fixed*?
+
+
+Note: coord_fixed forces a specified ratio between the physical representation of data units on the axes.
+
+```{r}
+princomp(sim2d)
+respc=princomp(sim2d)
+dfpc = data.frame(pc1=respc$scores[,1],
+pc2 = respc$scores[,2])
+ ggplot(dfpc,aes(x=pc1,y=pc2)) +
+   geom_point()
+```
+
+This could suggest that there is an equal amount of variance explained by both component 1 and 2.
+ 
+ 
