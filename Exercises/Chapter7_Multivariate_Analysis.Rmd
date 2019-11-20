@@ -252,7 +252,7 @@ Compare the variance of Figure 7.7 to the original axes, weight and disc.
 var(scaledathletes$weight) + var(reg1$fitted)
 ```
 
-The variances of the points along the original axes weight and disc are 1 since the variables were scaled.
+The variances of the points along the original axes weight and disc are ~ 1 since the variables were scaled.
 
 
 **A line that minimizes distances in both directions**
@@ -269,7 +269,7 @@ ath_gg + geom_segment(xend = pc[, 1], yend = pc[, 2]) +
 
 The purple principal component line mimimizes the sums of squares of the orthogonal projections.
 
-Figure 7.10
+**Figure 7.10**
 
 ```{r}
 pline1 + geom_segment(aes(xend = weight, yend = reg1$fitted), colour = "blue", alpha = 0.35) +
@@ -341,11 +341,12 @@ svd(X)$d
 Xtwo = matrix(c(12.5, 35.0, 25.0, 25, 9, 14, 26, 18, 16, 21, 49, 32,
        18, 28, 52, 36, 18, 10.5, 64.5, 36), ncol = 4, byrow = TRUE)
 USV = svd(Xtwo)
+USV
 ```
 
 **Question 7.15**
 
-Look at teh USV object.  What are its components?
+Look at the USV object.  What are its components?
 
 ```{r}
 names(USV)
@@ -354,7 +355,7 @@ USV$d
 
 **Question 7.16**
 
-How does each pair of singular vectors improve our approximation to Xtwo?
+How does each pair of singular vectors improve our approximation to Xtwo?  What do you notice about the third and fourth singular values?
 
 ```{r}
 Xtwo - USV$d[1] * USV$u[, 1] %*% t(USV$v[, 1])
@@ -390,16 +391,17 @@ Column 1 shows that the coefficients for the first 3 variables are practically e
 
 **Question 7.18**
 
-Compute the first principal component for the turtles data.
+Compute the first principal component for the turtles data by multiplying by the first singular value usv$d[1] by usv$u[,1]
 
 ```{r}
 turtles.svd$d[1] %*% turtles.svd$u[,1]
+#Alternative way to compute
 scaledTurtles %*% turtles.svd$v[,1]
 ```
 
 **Question 7.19**
 
-What part of the output of the svd function leads us to the first PC coefficients?
+What part of the output of the svd function leads us to the first PC coefficients, commonly referred to as the PC loadings?
 
 ```{r}
 svda$v[,1]
@@ -478,15 +480,23 @@ dudi.pca(turtles[, -1], nf = 2, scannf = FALSE)$c1[, 1] #install package ade4
 svd(scaledTurtles)$v[, 1]
 #prcomp(turtles[, -1])$rotation[, 1] 
 #princomp(scaledTurtles)$loadings[, 1]
-dudi.pca(turtles[, -1], nf = 2, scannf = FALSE)$c1[, 1] #install package ade4
+dudi.pca(turtles[, -1], nf = 2, scannf = FALSE)$c1[, 1] #requires package ade4
 ```
+
+Results are very similar when prcomp and princomp are disabled.
+
 
 **Question 7.22**
 
+Compare the standard deviation sd1 to that in the res object and to that of the scores.
+
 ```{r}
 res = princomp(scaledTurtles)
+res
 PC1 = scaledTurtles %*% res$loadings[,1]
+PC1
 sd1 = sqrt(mean(res$scores[, 1]^2))
+sd1
 ```
 
 Combine both the PC scores and the loading coefficients.
@@ -531,7 +541,7 @@ pca.ath$eig
 fviz_eig(pca.ath, geom = "bar", bar_width = 0.3) + ggtitle("")
 ```
 
-The screeplot tells us to use a 2 component plot.  These values actually represen the eigenvalues.
+The screeplot tells us to use a 2 component plot.  These values actually represent the eigenvalues.
 
 Change the signs of the running variables and plot the correlation circle.
 
@@ -549,7 +559,7 @@ Plot the athletes projected in the first principal plane.
 fviz_pca_ind(pcan.ath) + ggtitle("") + ylim(c(-2.5,5.7))
 ```
 
-Numbers appear to go from low to high.
+Numbers appear to go from low (left) to high (right).
 
 ```{r}
 data("olympic", package = "ade4")
@@ -568,7 +578,7 @@ Why does the athlete number 1 have the highest score but not the highest value f
 
 PCA treats all variables equally, but other continuous variables or categorical factors can be mapped onto the plot.
 
-T-cell expression PCA screeplot
+**T-cell expression PCA screeplot**
 
 ```{r}
 pcaMsig3 = dudi.pca(Msig3transp, center = TRUE, scale = TRUE,
@@ -636,7 +646,7 @@ fviz_pca_biplot(winePCAd, geom = "point", habillage = wine.class,
    ggtitle("") + coord_fixed()
 ```
 
-Small angles between the vectors Phenols, Flav and Proa indicate they are strongly correlated, whereas Hue and Alcholo are uncorrelated.
+Small angles between the vectors Phenols, Flav and Proa indicate they are strongly correlated, whereas Hue and Alcohol are uncorrelated.
 
 Observations correspond to dots colored according to the type of wine.
 
@@ -684,16 +694,7 @@ From https://en.wikipedia.org/wiki/Singular_value_decomposition
 (a) If *X* has no rows and no columns that are all zeros, then is the decomposition unqiue?
 
 
-Yes; refer to sentence above from Wikipedia
-
-
-"Rank of a matrix is defined as (a) the maximum number of linearly independent column vectors in the matrix or (b) the maximum number of linearly independent row vectors in the matrix. Both definitions are equivalent."
-
-* For an r x c matrix
- + If r is less than c, then the maximum rank of the matrix is r.
- + If r is greater than c, then the maximum rank of the matrix is c.
-
-https://stattrek.com/matrix-algebra/matrix-rank.aspx
+Yes
 
 
 (b) Generate a rank-1 matrix
@@ -711,7 +712,9 @@ X1 = u %*% t(v)
 X1
 ```
 
-Each cell in v is multipled by each cell in v to create a rank-1 matrix (15X4 matrix).
+t is used transpose the columns and rows so that we can multiple the values by the values in u.
+
+Each cell in v is multipled by each cell in u to create a rank-1 matrix (15X4 matrix).
 
 
 (c) Add some noise to the matrix.
@@ -785,6 +788,18 @@ pc2 = respc$scores[,2])
 Show the rotated Principal Component Axes
 
 ```{r}
+ggplot(dfpc, aes(x=pc1, y=pc2)) + geom_point() + xlab("PC1")+
+    ylab("PC2") + geom_point(aes(x=pc1,y=0),color="red") +
+    geom_segment(aes(xend = pc1, yend = 0), color = "red") +
+    geom_hline(yintercept = 0, color = "purple", lwd=1.5, alpha=0.5) +
+    xlim(-3.5, 2.7) + ylim(-2,2) + coord_fixed()
+segm = tibble(xmin = pmin(ppdf$PC1n, 0), xmax = pmax(ppdf$PC1n, 0), yp = seq(-1, -2, length = nrow(ppdf)), yo = ppdf$PC2n)
+ggplot(dfpc, aes(x = pc1, y = pc2)) + geom_point() + ylab("PC2") + xlab("PC1") +
+    geom_hline(yintercept=0,color="purple",lwd=1.5,alpha=0.5) +
+    geom_point(aes(x=pc1,y=0),color="red")+
+    xlim(-3.5, 2.7)+ylim(-2,2)+coord_fixed() +
+    geom_segment(aes(xend=pc1,yend=0), color="red")+
+    geom_segment(data=segm,aes(x=xmin,xend=xmax,y=yo,yend=yo), color="blue",alpha=0.5)
 
 ```
 
@@ -812,5 +827,25 @@ pc2 = respc$scores[,2])
 ```
 
 This could suggest that there is an equal amount of variance explained by both component 1 and 2.
+
+
+**Exercise 7.4**
+
+Make a correlation circle for the unweighted Hiiragi data xwt.
+
+
+```{r}
+pcaMouse = dudi.pca(as.data.frame(t(Biobase::exprs(xwt)), decreasing = TRUE)[1:100],
+  nf = 2, scannf = FALSE)
+pcaMouse$eig
+fviz_pca_var(pcaMouse, col.circle="black") + ggtitle("")
+
+```
  
+ 
+Make a biplot
+ 
+```{r}
+fviz_pca_biplot(pcaMouse, label = "var", habillage = t(Biobase::exprs(xwt))) + ggtitle("")
+```
  
