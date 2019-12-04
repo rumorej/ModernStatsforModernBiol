@@ -1,0 +1,518 @@
+---
+title: 'Chapter 8: High-throughput Count Data'
+author: "Jill R"
+date: "12/1/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(pasilla)
+library(tibble)
+library(DESeq2)
+library(DESeq)
+library(ggplot2)
+library(matrixStats)
+library(dplyr)
+library(pheatmap)
+library(readr)
+library(vsn)
+library(statmod)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Intro
+
++ RNA-Seq
+  + Sequence complimentary DNA (cDNA) obtained from reverse transcription
+  + Sequence the RNA molecules found in a population of cells or tissue
++ Chip-Seq
+  + Sequence DNA regions bound to DNA-binding protein identified using immuno-precipitation
++ CLIP-Seq
+  + Sequence RNA molecules or regions that are bound to a specific RNA-binding protein
++ DNA-Seq
+  + Sequence DNA to obtain genetic variants in heterogenous population of cells
+  
+  
+## Count Data
+
+
+```{r}
+fn = system.file("extdata", "pasilla_gene_counts.tsv",
+                  package = "pasilla", mustWork = TRUE)
+counts = as.matrix(read.csv(fn, sep = "\t", row.names = "gene_id"))
+```
+
+
+Count table = tallies the # of reads for each gene in each sample
+
+
+Always a good idea to view a random subset of the data to check that it loaded correctly.
+
+```{r}
+dim(counts)
+
+counts[ 2000+ (0:3), ]
+```
+
+
+## Challenges of Count Data
+
+
++ Data are large and have a dynamic range; often referred to as heteroscedastic
++ Data are non-negative and nont symmetric
++ Require Normalization to account for differences between experiments
++ Most important systematic bias stems from variations in total # of reads in each sample
+
+
+Normalization = identify nature and magnitude of systematic bias and take them into account in the model-based analysis of the data.
+
+
+**Question 8.1**
+
+
+How does the output of DESeq2's estimateSizeFactorsForMatrix compare with column sums?
+
+
+The results appear to be proportional based on the R code below; an increase in size factor results in an increase in the column sum.
+
+
+Figure 8.2: Size Factors vs. Sums for the Pasilla Data
+
+
+```{r}
+ggplot(tibble(
+  `size factor` = estimateSizeFactorsForMatrix(counts),
+  `sum` = colSums(counts)), aes(x = `size factor`, y = `sum`)) +
+  geom_point()
+```
+
+
+**Task**
+
+
+Look at the R source code for Figure 8.1 
+
+
+```{r}
+szfcDemo = data.frame(
+  x = c(2, 4, 6, 6,  8) * 10,
+  y = c(3, 6, 2, 9, 12) * 10,
+  name = LETTERS[1:5],
+  check.names = FALSE)
+slopes =  c(
+  blue = with(szfcDemo, sum(y) / sum(x)),
+  red = szfcDemo[, c("x", "y")] %>% as.matrix %>%
+    (DESeq2::estimateSizeFactorsForMatrix) %>% (function(x) x[2]/x[1]) %>% as.vector)
+ggplot(szfcDemo, aes(x = x, y = y, label = name)) + geom_point() +
+  coord_fixed() + xlim(c(0, 128)) + ylim(c(0, 128)) + xlab("sample 1") + ylab("sample 2") +
+  geom_text(hjust= 0.5, vjust = -0.6) +
+  geom_abline(slope = slopes[1], col = names(slopes)[1]) +
+  geom_abline(slope = slopes[2], col = names(slopes)[2])
+```
+
+
+The red slope is most often preferred by scientists; slope of the line is obtained using robust regression.  In both cases, sample C is downregulated.
+
+
+**Question 8.2**
+
+
+Plot the mean-variance relationship for biological replicates in the pasilla dataset.
+
+
+```{r}
+sf = estimateSizeFactorsForMatrix(counts)
+ncounts  = counts / matrix(sf,
+   byrow = TRUE, ncol = ncol(counts), nrow = nrow(counts))
+uncounts = ncounts[, grep("^untreated", colnames(ncounts)),
+                     drop = FALSE]
+ggplot(tibble(
+        mean = rowMeans(uncounts),
+        var  = rowVars( uncounts)),
+     aes(x = log(mean), y = log(var))) +
+  geom_hex() + coord_fixed() + theme(legend.position = "none") +
+  geom_abline(slope = 1:2, color = c("forestgreen", "red"))
+```
+
+
+Note: Green slope represents if the variance = mean, which appears to fit the data in the lower range.  The red slope represents the quadratic mean-variance relationship, which appears to fit the upper range of the data.
+
+
+## Example Analysis
+
+
+Load the metadata for the pasilla data
+
+Pasilla data = experiment on Drosohpila melanogaster cell cultures where effect of RNAi knowdown of the splicing factor pasilla on the cell's transcriptome was investigated.
+
+
+The dataset contains two experimental conditions, untreated (negative control) and treated (siRNA; small interfering RNA)
+
+
+```{r}
+annotationFile = system.file("extdata",
+  "pasilla_sample_annotation.csv",
+  package = "pasilla", mustWork = TRUE)
+pasillaSampleAnno = readr::read_csv(annotationFile)
+pasillaSampleAnno
+```
+
+
+Do some data wrangling; replace hyphens in the type column with underscores and convert type and condition columns into factors and specify the order of the levels.
+
+
+```{r}
+pasillaSampleAnno = mutate(pasillaSampleAnno,
+condition = factor(condition, levels = c("untreated", "treated")),
+type = factor(sub("-.*", "", type), levels = c("single", "paired")))
+```
+
+
+Check to see if the experimental conditions are balanced.
+
+
+```{r}
+with(pasillaSampleAnno,
+       table(condition, type))
+```
+
+
+Create a DESeqDataSet
+
+```{r}
+mt = match(colnames(counts), sub("fb$", "", pasillaSampleAnno$file))
+
+
+pasilla = DESeqDataSetFromMatrix(
+  countData = counts,
+  colData   = pasillaSampleAnno[mt, ],
+  design    = ~ condition)
+class(pasilla)
+is(pasilla, "SummarizedExperiment")
+```
+
+
+**Question 8.3**
+
+
+How can we access the row metadata of a Summarized Experiment Object?
+
+
+```{r}
+#The row metadata can be viewed using the following function, which returns a dataframe describing the rows
+?rowData
+```
+
+
+DESeq2 Method
+
+
+Prepare the data
+
+
+```{r}
+pasilla = DESeq(pasilla)
+
+#View the results
+res = results(pasilla)
+res[order(res$padj), ] %>% head
+```
+
+
+After performing a differential expression analysis, want to visualize a few basic plots as shown below, which are essential data quality measures.
+
+
+1. Histogram of p-values
+2. MA plot 
+3. Ordination plot
+4. Heatmap
+
+
+Histogram of p-values
+
+```{r}
+ggplot(as(res, "data.frame"), aes(x = pvalue)) +
+  geom_histogram(binwidth = 0.01, fill = "Royalblue", boundary = 0)
+
+thehist = hist(res$pvalue, breaks = 100, plot=FALSE)
+thehist$bgl = median(thehist$counts)
+
+plot(thehist)
+```
+
+
+Left-most peak corresponds to differentially expressed genes, which contains all p-values between 0-0.01 and corresponds to ~992 genes.
+
+
+**Question 8.4**
+
+If the data has evidence of batch effects (i.e., tilted shape with an increase towards the right), which is the underlying systematic variation where replicates are more different than expected, an MA plot can be used to visualize the data.
+
+
+**Error in R code chunk; not too sure what it going on?
+
+```{r}
+plotMA(pasilla, ylim = c( -2, 2))
+```
+
+
+Points are colored red if the adjusted p-value is less than 0.1.  Points that fall out of range are plotted as triangles.
+
+
+Can also generate a PCA plot to visualize the co-variates and potential batch effects (if present).
+
+
+```{r}
+#Data transformation; regularized logarithm
+pas_rlog = rlogTransformation(pasilla)
+
+#Plot
+plotPCA(pas_rlog, intgroup=c("condition", "type")) + coord_fixed()
+```
+
+PC1 = aligned with experimental conditions
+PC2 = aligned with sequencing protocol
+
+
+**Question 8.5**
+
+Do the axes of a PCA plot always have to align with a specific experimental co-variate?
+
+
+Generate a heatmap of the 30 most variable genes
+
+```{r}
+select = order(rowMeans(assay(pas_rlog)), decreasing = TRUE)[1:30]
+pheatmap( assay(pas_rlog)[select, ],
+     scale = "row",
+     annotation_col = as.data.frame(
+        colData(pas_rlog)[, c("condition", "type")] ))
+```
+We can see that the clustering of the samples is predominately dictated by the "type", which will have to be adjusted prior to downstream analyses.
+
+
+Exporting the Results
+
+
+```{r}
+write.csv(as.data.frame(res), file = "treated_vs_untreated.csv")
+```
+
+
+##Default Choices and Possible Modifications
+
+
+Default = DESeq function tests against the null hypothesis that each gene has the same adundance across conditions.
+
+
+The differential expression analysis in DESeq2 uses a generalized linear model (i.e., gamma-poisson/ negative binomal).
+
+
+## Two-Factor Analysis of the Pasilla Data
+
+
+Type had a considerable systematic effect on the data; need to adjust for this in order to get a more correct picture of which differences are attributanle to the treatment condition.
+
+
+Re-analyze the pasilla data 
+
+
+```{r}
+pasillaTwoFactor = pasilla
+design(pasillaTwoFactor) = formula(~ type + condition)
+pasillaTwoFactor = DESeq(pasillaTwoFactor)
+
+#View the results
+res2 = results(pasillaTwoFactor)
+head(res2, n = 3)
+
+#Retrieve specific results
+resType = results(pasillaTwoFactor,
+  contrast = c("type", "single", "paired"))
+head(resType, n = 3)
+```
+
+What did we gain from taking into account the "type" as a blocking factor?
+
+
+Plot the p-values between analyses to see the changes
+
+
+```{r}
+trsf = function(x) ifelse(is.na(x), 0, (-log10(x)) ^ (1/6))
+ggplot(tibble(pOne = res$pvalue,
+              pTwo = res2$pvalue),
+    aes(x = trsf(pOne), y = trsf(pTwo))) +
+    geom_hex(bins = 75) + coord_fixed() +
+    xlab("Single factor analysis (condition)") +
+    ylab("Two factor analysis (type + condition)") +
+    geom_abline(col = "orange")
+```
+
+p-values tend to be smaller for the two-factor analysis; majority of points lie above bisector.  This has led to a slight increase in power.
+
+
+Can also view this improvement by counting the number of genes that pass a certain signficance threshold.
+
+
+```{r}
+compareRes = table(
+   `simple analysis` = res$padj < 0.1,
+   `two factor` = res2$padj < 0.1 )
+addmargins( compareRes )
+```
+
+
+## Statistical Concepts
+
+
+Variance stabilizing transformation
+
+
+```{r}
+vsp = varianceStabilizingTransformation(pasilla)
+
+
+#Plot
+j = 1
+ggplot(tibble(
+         x    = assay(pasilla)[, j],
+         VST  = assay(vsp)[, j],
+         log2 = log2(assay(pasilla)[, j])) %>%
+             reshape2::melt(id.vars = "x"),
+       aes(x = x, y = value, col = variable)) +
+  geom_line() + xlim(c(0, 600)) + ylim(c(0, 9)) +
+  xlab("counts") + ylab("transformed")
+```
+
+
+**Question 8.13**
+
+```{r}
+rlp = rlogTransformation(pasilla)
+
+msd = function(x)
+  meanSdPlot(x, plot = FALSE)$gg + ylim(c(0, 1)) +
+     theme(legend.position = "none")
+
+gridExtra::grid.arrange(
+  msd(log2(counts(pasilla, normalized = TRUE) + 1)) +
+    ylab("sd(log2)"),
+  msd(assay(vsp)) + ylab("sd(vst)"),
+  msd(assay(rlp)) + ylab("sd(rlog)"),
+  ncol = 3
+)
+```
+
+
+## Dealing with Outliers
+
+
+**Question 8.14**
+
+
+```{r}
+# Function in DESeq2 to modify the default cutoff for Cook's Distance
+?results
+#Modify cooksCutoff arguement
+#Results takes arguments contrast and name to help the user pick out the comparisons of interest for printing a results table. 
+```
+
+How can we build into tests the scientific goal of detecting effects that have a strong enough size in contrast to effects that are statistically significant but very small?
+
+
+```{r}
+par(mfrow = c(4, 1), mar = c(2, 2, 1, 1))
+myMA = function(h, v, theta = 0.5) {
+  plotMA(pasilla, lfcThreshold = theta, altHypothesis = h,
+         ylim = c(-2.5, 2.5))
+  abline(h = v * theta, col = "dodgerblue", lwd = 2)
+}
+myMA("greaterAbs", c(-1, 1))
+myMA("lessAbs",    c(-1, 1))
+myMA("greater",          1)
+myMA("less",         -1   )
+```
+
+
+## Exercises
+
+
+**8.3**
+
+
+Followed a similar example from https://web.stanford.edu/class/bios221/labs/rnaseq/lab_4_rnaseq.html to generate the results from edgeR BUT I'm not sure how to compare the results obtained from the two methods...
+
+
+```{r}
+### Standard single-factor edgeR analysis                                                                                                                    
+dge = DGEList(counts, group = factor(pasilla$condition))
+dge
+
+#Filter the data
+
+dim(dge)
+dge_org = dge
+
+head(cpm(dge))
+
+#Total gene counts per sample
+keep = rowSums(cpm(dge)>100) >= 2
+
+#Reduces the dataset from 14599 tags to about 2249
+#For the filtered tags, there is very little power to detect differential expression, so little information is lost by filtering
+dge = dge[keep,]
+dim(dge)
+
+#After filtering, reset the library sizes
+dge$samples$lib.size = colSums(dge$counts)
+dge$samples
+
+
+#IMPORTANT NOTE: The “size factor” from DESeq is not equal to the “norm factor” in the edgeR. 
+#In edgeR, the library size and additional normalization scaling factors are separated. 
+#The lib.size and norm.factors are multiplied together to act as the effective library size; this (product) would be similar to DESeq's size factor.
+
+#Normalize; minimize log-fold changes between samples
+#edgeR is concerned with differential expression analysis rather than with the quantification of expression levels
+
+dge = calcNormFactors(dge)
+dge #effective library size replaces the orginial library size for downstream analyses
+
+#Data Exploration
+plotMDS(dge, method="bcv", col=as.numeric(dge$samples$group))
+legend("bottomleft", as.character(unique(dge$samples$group)), col=1:3, pch=20)
+
+#Estimate the Dispersion; assuming all tags have the same dispersion
+#Gives an overall variability across genome
+dge_disp = estimateCommonDisp(dge, verbose=T)
+
+#Estimate tagwise dispersion
+#Common dispersion needs to be estimated before estimating tagwise dispersions
+dge_disp = estimateTagwiseDisp(dge_disp)
+names(dge_disp)
+
+#Plot tagwise dispersion
+plotBCV(dge_disp) #Appears tagwise dispersion follows the model; points are close to the line
+
+
+#Differential Expression
+et12 = exactTest(dge_disp, pair=c(1,2)) # compare groups 1 and 2
+dge_tags = topTags(et12, n=10, adjust.method = "BH")
+dge_tags
+
+#Total # of Differentially Expressed Genes
+dge_total = decideTestsDGE(et12, adjust.method="BH", p.value=0.05)
+summary(dge_total)
+
+
+#Plot differentially expressed tags
+dge_tag12 = rownames(dge_disp)[as.logical(dge_total)] 
+plotSmear(et12, de.tags=dge_tag12)
+abline(h = c(-2, 2), col = "blue") #DGE tags are highlighted on the plot
+
+```
+
+
+```
