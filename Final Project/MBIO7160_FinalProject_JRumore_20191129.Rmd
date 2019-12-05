@@ -1,0 +1,1079 @@
+---
+title: "Cluster Validation using the clValid R Package"
+author: "Jill R"
+date: '2019-12-04'
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+library(here)
+library(readr)
+library(clValid)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(factoextra)
+library(fpc)
+library(Biobase)
+library(GO.db)
+library(annotate)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## Introduction
+
+
+Cluster analysis is a powerful, unsupervised data-mining technique that is used to elucidate patterns and/ or the underlying structure of high dimensional datasets, which may not be intuitively obvious.  Fundamentally, the key objective of clustering is to split the data into groups so that highly similar observations are tightly clustered from those that are highly distinct in order to minimize the average within cluster distance while maximizing the average distance between clusters [1].  
+
+
+Not surprisingly, cluster analysis is not represented by a single algorithm, but rather, a multitude of algorithms exist[1-3]. Although designed to achieve the same goal (i.e., clustering of the data), these algorithms differ in both the way clusters are identified and defined, resulting in vastly different groupings of the data [1-3].  Unfortunately, there is no single clustering algorithm that consistently outperforms the rest, and therefore, deciding on the most appropriate method for a given dataset can be a fundamentally challenging and overwhelming task [1,3].
+
+
+When selecting a clustering algorithm, it is common practice for researchers to rely on their prior knowledge and expertise, however, this process can be highly subjective.  For example, a researcher may be biased towards selecting an algorithm that validates their own assumptions while disregarding alternative algorithms that may reveal contradicting results [1].  Such an approach is nonetheless counterproductive as it undermines the key purpose of conducting a cluster analysis, which is to discover novel patterns in the data for hypothesis generation and further study [1].
+
+
+To obtain the most meaningful results, a researcher should always select an algorithm that generates compact, well-separated and biologically relevant clusters [3].  Likewise, it is also important for the researcher to keep in mind that clustering algorithms will attempt to find clusters even when they may not be present in the data.  If this caveat is not taken into consideration, non-significant clustering could lead to misinterpretations of the data, potentially impacting downstream analyses and decision-making [1-2].  How can one be certain that the most appropriate clustering algorithm and number of clusters has been selected for a given dataset?
+
+
+To ensure the results of the cluster analysis are of the highest quality, validation has become an increasingly important step in the cluster analysis workflow [1,3].  Essentially, the role of cluster validation is to evaluate both the appropriateness of the clustering algorithm and the optimal number of clusters for a given dataset [1,3].  When conducting cluster validation, it is recommended to use a variety of validation indices as these metrics can report different optimal clustering solutions for the same dataset, and therefore, using a single index could lead to incorrect assumptions about the validation analysis [4].   
+
+
+As a means for providing researchers with the necessary tools to efficiently validate the results of a cluster analysis, a number of R packages have been developed [5], including fpc [6], factoextra [7], NbClust [8], clv [9], and clValid [3], to name a few.  However, unlike most currently available packages, *clValid* offers nine cluster validation measures grouped into three categories (i.e., internal, stability and biological) that can be used to evaluate ten different clustering algorithms (i.e., “hierarchical”, “agnes”, “diana”, “*k*-means”, “pam”, “clara”, “fanny”, “model”, “som”, and “sota”) [3].  As reported by the authors, the most notable strength of the *clValid* package has the ability to perform simultaneous validations of multiple clustering algorithms for a range of clusters and validation measures using a single line of code, which cannot currently be achieved by other programs [3].  As well, the interpretation of the results returned by *clValid* appear to be intuitive and straightforward as the "optimal" clustering algorithm and number of clusters can be returned using the *optimalScores* function based on the overall results of the validation metrics that were assessed [3].
+
+
+**OBJECTIVE**
+
+
+The objective of the current study is to determine the optimal clustering method for two high-dimensional datasets (for which the ground truth is known), using the *clValid* R package. Since the datasets contain a maximum of two clusters, the selected clustering algorithms will be assessed using a range of clusters from two to seven.  Although a number of clustering algorithms exist within the package, only Hierarchical, *k*-means and PAM (i.e., *k*-medoids) will be investigated as these methods were explicitly discussed in class, and therefore, it is assumed that the intended audience will have a baseline knowledge of their inner workings.  As a refresher, a brief overview of each methods as previously described in Holmes and Huber [2] is included below.  
+
+
+* *Partition-based*
+  + Subdivide observations into k groups based on similarity to cluster centroids
+  + The number of clusters (k) must be pre-specified by the researcher
+    + Observations are placed in the cluster containing the cluster center it is closest to
+    + Cluster centers are updated and the process is repeated until the clusters stabilize
+  + Example algorithms include *k*-means and *k*-medoids (i.e., Partitioning Around Medoids; PAM)
+    + Centroid is not represented by a single point in *k*-means, but rather, a collection of points (i.e., average distance of all points in a single cluster)
+    + Centroid, or more appropriately termed, Medoid is the most central point in the cluster for *k*-medoids (i.e. PAM)
+
+
+* *Hierarchical*
+  + Tree-based (i.e., dendrogram) visualization of the observations
+  + Does not require prior knowledge of the number of clusters (k)
+  + Bottom-up approach
+    + Agglomerative
+      + Most common hierarchical clustering method
+      + Used to find small clusters
+      + Single observation clusters are iteratively merged based on similarity until all observations are contained in a single, large cluster.
+  + Top-down approach
+    + Divisive
+      + All observations begin in a single large cluster and are iteratively separated based on dissimilarity until all observations are in their own cluster.
+      + Not commonly used
+
+
+
+## Important Note
+
+
+The default distance metric for the available clustering algorithms and validation measures in the *clValid* package is set to "euclidean".  Additionally, the agglomerative method for hierarchical clustering is defaulted to "average linkage".  However, these parameters can be modified using the "metric" and method" switch, respectively, in the *clValid* function [3].  For the purposes of this study, all default parameters will be used unless otherwise noted.
+
+
+## Datasets
+
+
+The datasets that have been selected for analysis include two genomic datasets from the PulseNet Canada, which is the national molecular subtyping network for foodborne disease surveillance in Canada [9].  More specifically, the datasets contain allele data derived from whole-genome multilous sequence typing (wgMLST), which is a gene-by-gene approach that detects variation within a set of microbial genomes using a predefined set of pan-genomic loci (i.e., genes) [10].
+
+
+
+**Outbreak 1**
+
+
+The Outbreak 1 dataset contains whole-genome multilocus sequencing type (wgMLST) allele data for 74 *Listeria monocytogenes* isolates associated with two outbreaks, one of which was associated with ready to eat (RTE) meat products (n = 62), and the other, was linked to the consumption of contaminated leafy greens (n = 12).
+
+
+**Sporadic**
+
+
+Based on the fact that clustering algorithms are designed to find clusters, even if they do not actually exist within the data, a sporadic dataset (i.e., contains ONLY unrelated isolates) was selected to investigate the cluster validation results returned by the *clValid* package.  This dataset contains wgMLST allele data for 26 *Listeria monocytogenes* isolates that were referred to the PNC network within a similar time frame but where considered to be epidemiologically unrelated (i.e., similar exposures were not identified).
+
+
+
+## Data Preparation
+
+
+To successfully run the *clValid* R package, the data must be formatted as a numeric matrix, data frame or an *ExpressionSet* object, and the columns MUST ONLY contain numeric data (i.e., NA's must be replaced and categorical variables must be removed).  Most importantly, the *clValid* function operates under the assumption that the rows in the dataset contain the "observations" that are intended to be clustered [3], and thus, special care must be exercised when formatting the data for analyses.
+
+
+**Load the Datasets**
+
+
+*Outbreak 1*
+
+
+```{r}
+#Load data and set row.name to Isolate and replace ? with NA's
+LmOB2_data = read.csv(here("LmOutbreakData.csv"), row.names = "Isolate", na.strings = "?")
+
+#Remove categorial variables
+LmOB2_subdata = subset(LmOB2_data, select = -c(Group))
+
+#Check data for NA's
+table(is.na(LmOB2_subdata)) #20896 NA's in the dataset; these actually represent NO allele call for a particular locus
+
+#Replace NA's with 99 (i.e., use an arbitrary # that is not already represented in the dataset)
+LmOB2_clean = replace(LmOB2_subdata, is.na(LmOB2_subdata), 99L) # replacing with zero proved to cause internal issues with the clustering algorithms so 99 is being used; less problematic
+#L is used to change the objects from dbl integer to interger, which also proved to be an issue for downstream analyses
+
+# Identify which columns (i.e., loci) have zero variance 
+which(apply(LmOB2_clean, 2, var)==0)
+
+#Example of Locus LMO00125, which has zero variance
+summary(LmOB2_clean$LMO00125)
+
+#Remove columns with 0 variance as it is problematic for downstreamn analyses
+LmOB2 = LmOB2_clean[ ,apply(LmOB2_clean, 2, var) !=0]
+
+#Check to see that columns have been removed
+dim(LmOB2_clean) #contains columns with zero variance
+dim(LmOB2) # 25 columns with zero variance have been removed
+```
+
+
+**Sporadic**
+
+
+```{r}
+#Load data and set row.name to Isolate and replace ? with NA's
+LmSP_data = read.csv("./LmSporadic.csv", row.names = "Isolate", na.strings = "?")
+
+#Remove categorial variables
+LmSP_subdata = subset(LmSP_data, select = -c(Group))
+
+#Check data for NA's
+table(is.na(LmSP_subdata)) #29509 NA's in the dataset; these actually represent NO allele call for a particular locus
+
+#Replace NA's with 99
+LmSP_clean = replace(LmSP_subdata, is.na(LmSP_subdata), 99L) # replacing with zero proved to cause internal issues with the clustering algorithms so 99 is being used; less problematic
+#L is used to change the objects from dbl integer to interger, which also proved to be an issue for downstream analyses
+
+# Identify which columns (i.e., loci) have zero variance 
+which(apply(LmSP_clean, 2, var)==0)
+
+#Example of Locus LMO00048, which has zero variance
+summary(LmSP_clean$LMO00132)
+
+#Remove columns with 0 variance as it is problematic for eclust in the factoextra R package
+LmSP = LmSP_clean[ ,apply(LmSP_clean, 2, var) !=0]
+
+#Check to see that columns have been removed
+dim(LmSP_clean) #contains columns with zero variance
+dim(LmSP) # 10 columns with zero variance have been removed
+```
+
+
+The authors of *clValid* recommend to run all validation measures simultaneously for each of the cluster algorithms over a range of cluster numbers as it is reported to be more computationally efficient [3], however for the current study, the validation measures will be run separately.  Following a preliminary analysis of the data, it was discovered that some metrics are quite computationally demanding (i.e., stability), and therefore, require additional resources beyond the capabilities of RStudio.
+
+
+## Internal Validity
+
+
+The purpose of internal validation measures is to assess the appropriateness of the clustering algorithm based on the intrinsic properties of the dataset, and therefore, these metrics do not take into account external sources of information [1, 3, 10].  More specifically, these measures are used to evaluate whether the selected clustering algorithm captures the natural structure of the data.  
+
+
+Three internal validation metrics have been implemented in the *clValid* package, and include "connectedness", "compactness", and "separation" [3].  A brief explanation of each metric is included below.
+
+
+*Connectivity*
+
+
+Connectivity, or more commonly, connectedness, is used to measure the degree to which observations are placed in the same cluster as their "*k*-nearest" neighbours (for a given algorithm) [3, 10].
+
+
+For a particular clustering algorithm, $C = {C_{1,...,}C_{K}}$, the connectivity can be defined as follows:
+
+
+$$Conn(C) = \sum_{i=1}^N\sum_{j=1}^Lx_{i,nn_{i(j)}}$$
+
++ Where, 
+  + *L* = number of neighbours that contribute to the connectivity
+  + *N* = number of observations placed into *k* clusters
+  + $nn_{i(j)}$ = is the *j*th nearest neighbour to observation *i*
+  + $x_{i,nn_{i(j)}}$ = zero if *i* and $nn_{i(j)}$ are in the same cluster, and 1/*j* if they are not in the same cluster
+
+
+
+The connectivity validation measure returns a value between zero and infinity, where lower values (i.e., closer to zero) reflect optimal connectivity [3]. 
+
+
+
+
+*Compactness and Separation*
+
+
+Compactness is used to assess how close observations are within the same cluster (i.e., intra-cluster variance), while separation quantifies the distance between clusters.  The neighbSize, which indicates the number of observations to consider "neighbours" when calculating the connectivity is set to a default of 10 [3].  This default was used unless otherwise stated.
+
+
+Given the opposing nature of these metrics (i.e., an increase in the compactness of clusters will result in a subsequent decrease in the separation between clusters), these measures are typically combined into a single score.  Two commonly used methods that assess both the compactness and separation of clusters are the Silhouette Width [3, 4, 11, 12] and the Dunn Index [3, 4, 11, 13], which are described in greater detail below.
+
+
+
+*Silhouette Width*
+
+
+The Silhouette Width is used to evaluate how well observations are clustered based on the average distance between clusters (i.e., how close is an observation in one cluster to an observation in a neighbouring cluster?) [3, 4, 12].
+
+
+The Silhouette Width is defined as follows and is computed according to the following steps:
+
+
+$$S(i) = \frac{b_i - a_i}{max(b_i, a_i)}$$
+
+
+1. Calculate the average dissimilarity, $a_i$, for each observation, *i*, and all other observations in the same cluster.
+
+
+2. Calculate the average dissimilarity, $d(i, C)$ of $i$ to all observations in other clusters $C$.  The smallest value of $d(i, C)$ is defined as $b_i = min_c d(i, C)$, where $b_i$ is the average distance between $i$ and the observations in the nearest cluster to which it does not belong.
+
+
+
+The $S_i$ values are reported in the range of -1 to 1 where observations are considered to be well clustered if the $S_i$ value is large (i.e., close to 1).  In contrast, an $S_i$ value close to zero indicates the observation likely lies somewhere between two clusters, while a negative $S_i$ value suggests the observation is most likely in the wrong cluster [11].
+
+
+
+*Dunn Index*
+
+
+Provides a ratio of the smallest distance between two observations that are not in the same cluster to the largest distance between observations in the same cluster.  The values reported for the Dunn Index are between zero and infinity with a large Dunn Index indicating the clusters are compact and well-separated [3, 11, 13].  
+
+
+The Dunn Index is defined as follows and is computed according to the following steps:
+
+
+$$D = \frac{min.separation}{max.diameter}$$
+
+
+1. Compute the distance between each observation in a cluster and the observations in other clusters to determine the minimum pairwise inter-cluster distance, which represents the $min.separation$.
+
+
+2. Compute the distance between observations in the same cluster to determine the maximal intra-cluster distance, which represents the $max.diameter$.
+
+
+
+
+**Internal Validity Assessment**
+
+
+*Outbreak 1*
+
+
+```{r}
+
+#Internal Validity Check for 2 to 7 clusters for 3 clustering methods
+intcheck_LmOB2 = clValid(LmOB2, nClust = 2:7, clMethods = c("hierarchical", "kmeans", "pam"), validation = "internal")
+
+#View summary results and optimal scores
+summary(intcheck_LmOB2)
+optimalScores(intcheck_LmOB2)
+
+#Plot the Results
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
+plot(intcheck_LmOB2, legend = FALSE)
+plot(nClusters(intcheck_LmOB2), measures(intcheck_LmOB2, "Dunn")[, , 1], type = "n", 
+     axes = F, xlab = "", ylab = "")
+legend("center", clusterMethods(intcheck_LmOB2), col = 1:3, lty = 1:3, pch = paste(1:3))
+```
+
+
+
+Based on the optimal scores for the internal validation results for the Outbreak 1 dataset, it appears that hierarchical clustering with k=2 clusters is a more suitable algorithm than *k*-means or PAM.  The connectivity is minimized, whereas the Dunn Index and Silhouette Width are maximized.  This suggests that the hierarchical clustering method with k=2 clusters generates clusters that are compact, well-separated and demonstrate optimal connectivity.  
+
+
+
+*Sporadic*
+
+
+```{r}
+#Internal Validity Check for 2 to 7 clusters for 3 clustering methods
+intcheck_LmSP = clValid(LmSP, nClust = 2:7, clMethods = c("hierarchical", "kmeans", "pam"), validation = "internal")
+
+#View summary results and optimal scores
+summary(intcheck_LmSP)
+optimalScores(intcheck_LmSP)
+
+#Plot the Results
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
+plot(intcheck_LmSP, legend = FALSE)
+plot(nClusters(intcheck_LmSP), measures(intcheck_LmSP, "Dunn")[, , 1], type = "n", 
+     axes = F, xlab = "", ylab = "")
+legend("center", clusterMethods(intcheck_LmSP), col = 1:3, lty = 1:3, pch = paste(1:3))
+```
+
+
+According to the results for the Sporadic Dataset, hierarchical also appears to be the most suitable clustering method, however, there is not an obvious consensus on the optimal number of clusters.  This result is to be expected as the dataset does not contain any clusters.  Although the connectivity measure suggests an optimal number of two clusters for the hierarchical clustering algorithm, the reported value is high (i.e., >4).  Since the Dunn Index might be the most optimal score reported (0.8888), a cluster size of k=5 may be the most suitable.  To determine what would happen if the number of clusters was modified, k was increased to k=25 for the Sporadic dataset.  This resulted in an increase in the Dunn Index, while the other metrics remained relatively constant.  In contrast, as the number of clusters (k) was increased for Outbreak 1, all values remained relatively constant as the number of optimal clusters was likely already detected.  
+
+
+
+## Compare clValid results to other R packages 
+
+
+Although not the primary objective of the study, the results reported by *clValid* for each of the validation measures investigated were compared to two commonly used R packages for cluster validation, fpc [6] and factoextra [7] to determine if similar results would be generated.  More specifically, this step was conducted to address the inherent issue associated with cluster validation in that a clustering algorithm that performs well for one validation index, does not necessarily imply that it will perform equally as well for another validation metric [14].     
+
+
+Of note, the eclust function implements a default bootstrapping value of 100 (i.e., nboot = 100), which was maintained throughout the analyses below.  To ensure replication of the results, a set has been set for each of the R code chunks below.  As well, it is important to note the cluster.stats function returns two Dunn Indices, however, the value of interest for the purpose of this study corresponds to "dunn", which is analogous to the Dunn Index reported by *clValid*.
+
+
+```{r}
+#View the manual page for eclust for additional details
+?eclust
+
+#View the manual page for the cluster.stats function for more details
+?cluster.stats
+```
+
+
+*Outbreak 1*
+
+
+```{r}
+set.seed(1234)
+
+#Assess the K-Means Clustering Algorithm using the eclust function
+LmOB2_km = eclust(LmOB2, FUNcluster = "kmeans", k = NULL, k.max = 7, hc_metric = "euclidean", graph = FALSE)
+#k = NULL -> optimal number of clusters is determined by the gap statistic
+
+#View the cluster validation statistics using the cluster.stats function in the fpc R package
+km_LmOB2stats = cluster.stats(dist(LmOB2),  LmOB2_km$cluster)
+
+#Results Summary
+#Number of Clusters = 2
+#Cluster Size = 43, 31
+#Silhouette Width = 0.2499
+#Dunn Index = 0.3038
+
+#View the number of observations in each cluster
+LmOB2_km$cluster 
+
+#Check the Silhouette Values
+LmOB2_km$silinfo
+#Plot Sil Width
+fviz_silhouette(LmOB2_km)
+```
+![The plot in the knitted version is incorrect; please refer to](SilPlot_LmOB2_km.tiff).
+
+Also, the results output generated by the code chunk above is incorrect in the knitted version.  When reviewing the results, please refer to the results generated within the current R markdown file (although a brief summary has been provided in the code above).
+
+
+Using the eclust and cluster.stats functions, a kmeans clustering with k=2 clusters was considered to be optimal.  However, cluster 1 contains a mixture of observations from both outbreaks while cluster 2 only contains observations from the outbreak associated with RTE.  Additionally, the average Silhouette Width is lower (0.2499) than the Silhouette Width reported by clValid for the same clustering parameters (0.6934).  This difference is likely attributed to a group of isolates with negative Silhouette values identified using the eclust function, which correspond to the observations associated with the RTE outbreak that have been placed in the cluster with observations associated with a leafy green outbreak.  These negative values suggest the observations are most likely placed in the wrong cluster, which is consistent with the ground truth.  It is possible that the Silhouette Width in the clValid package did not account for these misclassifications.
+
+
+```{r}
+set.seed(1234)
+
+#Assess the PAM Clustering Algorithm
+LmOB2_pam = eclust(LmOB2, FUNcluster = "pam", k = NULL, k.max = 7, hc_metric = "euclidean", graph = FALSE)
+
+#View the cluster validation statistics using the cluster.stats function in the fpc R package
+pam_LmOB2stats  = cluster.stats(dist(LmOB2),  LmOB2_pam$clustering)
+
+
+#Results Summary
+#Number of Clusters = 6
+#Cluster Size = 31, 26, 1, 4, 11, 1
+#Silhouette Width = 0.4487
+#Dunn Index = 0.5603
+
+#View the cluster number for each observation
+LmOB2_pam$clustering 
+
+#Check the Silhouette Values
+LmOB2_pam$silinfo 
+
+#Plot Sil Width
+fviz_silhouette(LmOB2_pam)
+```
+
+
+Using the eclust and cluster.stats functions, a PAM clustering with k=6 clusters was considered to be optimal.  Although more clusters were identified, the observations associated with RTE meat (clusters 1-4) are clustered separately from observations associated with an exposure to leafy greens (clusters 5-6).  The average Silhouette Width (0.4487) is also consistent with the average Silhouette Width reported by clValid for the PAM algorithm with 6 clusters (0.4487).   
+
+
+```{r}
+set.seed(1234)
+
+#Assess the Hierarchical Clustering Algorithm
+LmOB2_hc = eclust(LmOB2, FUNcluster = "hclust", k = NULL, k.max = 7, hc_metric = "euclidean", hc_method = "average", graph = FALSE)
+
+#View the cluster validation statistics using the cluster.stats function in the fpc R package
+hc_LmOB2stats  = cluster.stats(dist(LmOB2),  LmOB2_hc$cluster)
+
+
+
+#Results Summary
+#Number of Clusters = 7
+#Cluster Size = 29, 30, 1, 1, 1, 11, 1
+#Silhouette Width = 0.4570
+#Dunn Index = 0.7618
+
+#View the cluster number for each observation
+LmOB2_hc$cluster 
+
+#Check the Silhouette Values
+LmOB2_hc$silinfo 
+
+#Plot the Silhouette Values
+fviz_silhouette(LmOB2_hc)
+```
+
+
+Using the eclust function, a hierarchical clustering with k=7 clusters was considered to be optimal, which was not in agreement with the clValid results (k=2) for the same dataset.  Although the observations were split into many more clusters (i.e., 7) with the eclust function in comparison to clValid, the observations associated with the RTE Meat Outbreak are clustered separately (clusters 1-5) from the observations associated with the Leafy Green Outbreak (clusters 6-7).  Additionally, the average Silhouette Width (0.4570) is consistent with the average Silhouette Width reported by *clValid* for the hierarchical algorithm with 7 clusters (0.4570). 
+
+
+To determine whether the eclust and cluster.stats functions return comparable values to those reported by *clValid* for the optimal clustering algorithm and number of clusters (i.e., hierarchical, k=2), the Outbreak 1 dataset was re-evaluated with the number of clusters (k) adjusted to k=2.
+
+
+```{r}
+set.seed(1234)
+
+###Re-evaluate Outbreak 1 using the optimal number of cluster identified by clValid for the hierarchical clustering algorithm
+
+#Assess the Hierarchical Clustering Algorithm with k=2
+LmOB2_hc2 = eclust(LmOB2, FUNcluster = "hclust", k = 2, k.max = 7, hc_metric = "euclidean", hc_method = "average", graph = FALSE)
+
+#View the cluster validation statistics using the cluster.stats function in the fpc R package
+hc_LmOB2stats2 = cluster.stats(dist(LmOB2), LmOB2_hc2$cluster)
+
+
+#Results Summary
+#Number of Clusters = 2
+#Cluster Size = 62, 12
+#Silhouette Width = 0.6934
+#Dunn Index = 1.1787
+
+
+#View the cluster number for each observation
+LmOB2_hc2$cluster 
+
+#Plot Sil Width
+fviz_silhouette(LmOB2_hc2)
+```
+
+
+Following an adjustment of the number of clusters to k=2 for the hierarchical clustering algorithm, the summary statistics returned by the eclust function and the cluster.stats function were nearly identical to those obtained by the *clValid* package.  Thus, the results suggest that k=2 leads to a more appropriate clustering of the observations according to the outbreak they are associated with.    
+
+
+*Sporadic*
+
+
+```{r}
+set.seed(1234)
+
+#Assess the K-Means Clustering Algorithm using the eclust function
+LmSP_km = eclust(LmSP, FUNcluster = c("kmeans"), k = NULL, k.max = 7, hc_metric = "euclidean", graph = FALSE)
+#k = NULL -> optimal number of clusters is determined by the gap statistic
+
+#View the cluster validation statistics using the cluster.stats function in the fpc R package
+km_LmSPstats = cluster.stats(dist(LmSP),  LmSP_km$cluster)
+
+
+#Number of Clusters = 4
+#Cluster Size = 9, 2, 2, 13
+#Silhouette Width = 0.1362
+#Dunn Index = 0.4928
+
+
+#View the number of observations in each cluster
+LmSP_km$cluster 
+
+
+#Check the Silhouette Values
+LmSP_km$silinfo
+
+```
+
+
+Using the eclust function, a kmeans clustering with k=4 clusters was considered to be optimal, however, multiple unrelated observations are included in the same cluster.  Not surprisingly, the average Silhouette Width is slightly lower (0.1362) than the Silhouette Width reported by clValid (0.2257) for the same clustering parameters.  This difference is likely attributed to a group of isolates with negative Silhouette values; this suggests these isolates are most likely placed in the wrong cluster, which is consistent with the ground truth.  Given the discrepancy, it is possible that the Silhouette Width in the clValid package did not "catch"/ account for these misclassifications.
+
+
+```{r}
+set.seed(1234)
+
+#Assess the PAM Clustering Algorithm
+LmSP_pam = eclust(LmSP, FUNcluster = c("pam"), k = NULL, k.max = 7, hc_metric = "euclidean", graph = FALSE)
+
+#View the cluster validation statistics using the cluster.stats function in the fpc R package
+pam_LmSPstats  = cluster.stats(dist(LmSP),  LmSP_pam$clustering)
+
+
+
+#Number of Clusters = 2
+#Cluster Size = 23, 3
+#Silhouette Width = 0.4850
+#Dunn Index = 0.8376
+
+
+#View the cluster number for each observation
+LmSP_pam$clustering 
+
+
+#Check the Silhouette Values
+LmSP_pam$silinfo 
+```
+
+
+Using the eclust and cluster.stats functions, a PAM clustering with k=2 clusters was considered to be optimal, however, unrelated observations are grouped together, with a majority of observations contained in a single cluster (i.e., cluster 1).  The average Silhouette Width (0.4487) is consistent with the average Silhouette Width reported by clValid for the same clustering parameters (0.4487).
+
+
+```{r}
+set.seed(1234)
+
+#Assess the Hierarchical Clustering Algorithm
+LmSP_hc = eclust(LmSP, FUNcluster = c("hclust"), k = NULL, k.max = 7, hc_metric = "euclidean", hc_method = "average", graph = FALSE)
+
+#View the cluster validation statistics using the cluster.stats function in the fpc R package
+hc_LmSPstats  = cluster.stats(dist(LmSP),  LmSP_hc$cluster)
+
+
+#Results Summary
+#Number of Clusters = 5
+#Cluster Size = 21, 2, 1, 1, 1
+#Silhouette Width = 0.2905
+#Dunn Index = 0.8889
+
+
+#View the cluster number for each observation
+LmSP_hc$cluster 
+
+
+#Check the Silhouette Values
+LmSP_hc$silinfo #Average Silhouette Width (0.2905) is consistent with the average Silhouette Width reported by clValid (0.2905).
+```
+
+
+Using the eclust function, a hierarchical clustering with k=5 clusters was considered to be optimal, which was not in agreement with the clValid results for the same dataset.  However, the average Silhouette Width (0.2905) was consistent with the average Silhouette Width reported by clValid for the same clustering parameters (i.e., k=5) (0.2905).  
+
+
+Since this dataset does not actually contain any clusters, the results were not re-evaluated with an adjusted k.  
+
+
+As well, it is important to note that only a range of 2 to 7 clusters was investigated in order to streamline computational requirements.  However, if more clusters were permitted, it is possible that each isolate would eventually end up in its own cluster.
+
+
+
+## Stability
+
+
+Stability measures are used to compare the clustering results of the complete dataset to the clustering results after the removal of single column, which is consecutively repeated for all columns in the dataset [3].  If the clustering algorithm is suitable for the given dataset, the clusters should remain the same as stable clusters should be robust to random changes in the data [3].  
+
+
+The *clValid* package offers four stability measures including the average proportion of non-overlap (APN), the average distance (AD), the average distance between means (ADM), and the figure of merit (FOM), which are reported to be unique to the tool by the authors [3].  A brief description of each metric is included below.
+
+
+**APN**
+
+
+Measures the average proportion of observations that are not placed in the same cluster based on the clustering of the complete dataset and the clustering after the removal of a single column [3].
+
+
+The APN is defined as follows:
+
+
+$$APN(C) = \frac{1}{MN}\sum_{i=1}^N\sum_{l=1}^M(1 - \frac{n(C^{i,l} \cap C^{i,0})}{n(C^{i,0})}$$
+
++ Where,
+
+  + $N$ = total number of observations in the dataset
+  + $M$ = total number of columns
+  + $C^{i,0}$ = cluster containing observation $i$ based on the clustering of the complete dataset
+  + $C^{i,l}$ = cluster containing observation $i$ based on the clustering after the removal of a single column $l$  
+
+
+
+The APN results are reported in a range of 0 to 1, with values closer to 0 indicating a high degree of consistency in the clustering.
+
+
+
+**AD**
+
+
+Measures the average distance of observations placed in the same cluster based on the clustering of the complete dataset and the clustering after the removal of a single column [3].
+
+
+$$APN(C) = \frac{1}{MN}\sum_{i=1}^N\sum_{l=1}^M \frac{1}{n(C^{i,0})n(C^{i,l})}\Bigg[\sum_{i\in C^{i,0}, j\in C^{i,l}} dist(i,j)\Bigg]$$
+
+
+
+The AD results are reported in a range of 0 to infinity, where smaller values indicate a better degree of clustering.
+
+
+
+**ADM**
+
+
+Measures the average distance between cluster centers based on the clustering of the complete dataset and the clustering after the removal of a single column.  Of note, the ADM currently only implements the Euclidean distance [3].
+
+
+The ADM is defined as follows:
+
+
+$$ADM(C) = \frac{1}{MN}\sum_{i=1}^N\sum_{l=1}^Mdist(\bar{x}_{C^{i,l}},\bar{x}_{C^{i,0}})$$ 
+
+
++ Where,
+  + $\bar{x}_{C^{i,0}}$ = mean of observations in the cluster containing observation $i$ for the clustering of the complete dataset
+  + $\bar{x}_{C^{i,l}}$ = mean of observations in the cluster containing observation $i$ for the clustering after the removal of a single column.
+
+
+The ADM results are reported in a range of 0 and infinity, where smaller values indicate a better degree of clustering.
+
+
+
+**FOM**
+
+
+Measures the average intra-cluster variance of observations in the deleted column
+
+
+$$FOM(l,C) = \sqrt{\frac{1}{N}\sum_{k=1}^K\sum_{i\in C_{k}(l)}dist(x_{i,l},\bar{x}_{C_{k}(l)})}$$
+
+
+
+**Stability Check**
+
+
+Given the high computational demands of this particular validity measure (which the authors of *clValid* do not address in the publication), the R code was run in a conda environment on a high computing cluster hosted at the National Microbiology Laboratory (i.e., Waffles).  
+
+
+The R output files (scheckLmOB2.Rout and scheckLmSP.Rout) have been included in the https://github.com/rumorej/ModernStatsforModernBiol.git repository in the folder "Final Project". 
+
+
+An example of the R code that could be run in RStudio (although time consuming) for each of the datasets is included below (but has been commented out).
+
+
+*Outbreak 1*
+
+
+```{r}#
+#Stability Check for 2 to 7 clusters for 3 clustering methods
+stacheck_LmOB2 = clValid(LmOB2, nClust = 2:7, clMethods = c("hierarchical", "kmeans", "pam"), validation = "stability")
+
+#View Optimal Results
+optimalScores(stacheck_LmOB2)
+
+#Plot the Results
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
+plot(stabcheck_LmOB2, legend = FALSE)
+plot(nClusters(stabcheck_LmOB2), measures(stabcheck_LmOB2, "Dunn")[, , 1], type = "n", 
+     axes = F, xlab = "", ylab = "")
+legend("center", clusterMethods(stabcheck_LmOB2), col = 1:3, lty = 1:3, pch = paste(1:3))
+```
+
+
+*Sporadic*
+
+
+```{r}#
+#Stability Check for 2 to 7 clusters for 3 clustering methods
+stacheck_LmSP = clValid(LmSP, nClust = 2:7, clMethods = c("hierarchical", "kmeans", "pam"), validation = "stability")
+
+#View Optimal Results
+optimalScores(stacheck_LmSP)
+
+
+#Plot the Results
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
+plot(stabcheck_LmSP, legend = FALSE)
+plot(nClusters(stabcheck_LmSP), measures(stabcheck_LmSP, "Dunn")[, , 1], type = "n", 
+     axes = F, xlab = "", ylab = "")
+legend("center", clusterMethods(stabcheck_LmSP), col = 1:3, lty = 1:3, pch = paste(1:3))
+```
+
+
+Based on the results of the stability validation analysis obtained from file scheck_LmOB1.Rout, both hierarchical with k=2 and pam with k=7 were reported to generate stable clusters.  Although pam with k=7 was reported to be stable according to the AD (421.3878) and the FOM (2.2482), the results from the internal validation reported a low Silhouette Width and Dunn Index for this particular clustering solution.  Therefore, it would not be considered appropriate for the dataset.  Hierarchical with k=2 was also reported as the most stable clustering solution for the Sporadic dataset.  A number of different combinations of clustering algorithms and cluster numbers were reported, however, k=2 was reported most consistently between the internal and stability validation measures.  Again, had more clusters been evaluated for the Sporadic dataset, the results returned by *clValid* would also have likely improved. 
+
+
+
+
+## Bootstrapping
+
+
+The stability results obtained from the *clValid* package for each of the three datasets was compared to the results obtained from the *clusterboot* function in the *fpc* R package to determine whether similar results are generated.
+
+
+Briefly, bootstrapping, which encompasses repetitive re sampling of the data (with replacement), is an alternative way to evaluate the stability of a clustering algorithm. 
+
+
+More specifically, the clusterboot function uses the Jaccard coefficient to measure the similarity between the results obtained from the various instances of the bootstrapping method applied to the data) to determine which clusters are similar, and which are distinct.  The mean value of the Jaccard coefficient over all the bootstrap iterations of the data is used to determine the cluster stability of each cluster in the original clustering [15].
+
+
+Since this stability index is not the main focus of the current study, only a simplified example of the inner workings of the clusterboot function is provided below [15].
+
+
+1. Cluster the data using the algorithm of interest
+2. Draw a new dataset (of the same size as the original) by resampling the original dataset with replacement (i.e., some of the data points may show up more than once, and others not at all). 
+3. Cluster the new dataset using the same algorithm as above.
+4. Find the most similar clusters between the original clustering and the new clustering (i.e., cluster with a maximum Jaccard coefficient). 
+5. If the maximum Jaccard coefficient is less than 0.5, the original cluster is considered to be dissolved (i.e., it didn’t show up in the new clustering). A dissolved cluster does not likely represent a “real” cluster.
+6. Repeat steps 2-5 based on the number of times the bootstrapping method is to be applied (i.e., B=50).
+
+
+The Jaccard Coefficient is reported on a scale of 0-1 (or 0%-100%), with higher values indicating higher stability.  A more precise interpretation is provided below, which was obtained from the ?clusterboot help page in R Studio. 
+
+
+$$Jaccard Index = \frac {|A \cap B|}{|A \cup B|}$$
+
+
+
++ Interpretation:
+  + <0.60 = cluster is unstable and should not be trusted
+  + 0.6-0.75 = cluster may be real, but however, the certainty of what observations belong to the cluster is not high
+  + 0.75-0.84 = cluster is stable and likely represents a true cluster
+  + greater than or equal to 0.85 = cluster is highly stable
+
+
+To note, the datasets shown below have been assessed using a bootstrap value of 50 (i.e., the datasets are resampled 50 times).
+
+
+
+*Outbreak 1*
+
+
+```{r}
+#Run bootstrapping for kmeans
+LmOB2_kmboot = clusterboot(LmOB2, B=50, distances=FALSE, clustermethod=kmeansCBI, seed=1234, krange=2:7)
+#View the results
+LmOB2_kmboot
+
+
+#Run bootstrapping for PAM
+LmOB2_pamboot = clusterboot(LmOB2, B=50, distances=FALSE, clustermethod=pamkCBI, seed=1234, krange=2:7)
+#View the results
+LmOB2_pamboot
+
+
+#Run bootstrapping for hierarchical
+LmOB2_hcboot = clusterboot(LmOB2, B=50, distances=FALSE, clustermethod=hclustCBI, method="average", seed=1234, k=2:7)
+#View the results
+LmOB2_hcboot
+
+```
+
+
+Using the clusterboot function to assess the stability of the three clustering algorithms for the Outbreak 1 dataset, a total of k=3 clusters were identified for *k*-means, with relatively high Jaccard coefficients for each of the clusters (i.e., 0.8268, 1, 0.8251), which suggests these clusters are quite stable.  However, the observations associated with the RTE outbreak were observed to be split across two clusters.  The pam clustering algorithm generated even more stable clusterings k=2, with perfect Jaccard Coefficients (1, 1).  The observations were also clustered according to outbreak.  A total of k=7 clusters were observed for the hierarchical clustering algorithm, however, only two clusterings were considered stable as indicated by the Jaccard Coefficient (1,1,0,0,0,0,0).       
+
+
+
+*Sporadic*
+
+
+```{r}
+#Run bootstrapping for kmeans
+LmSP_kmboot = clusterboot(LmSP, B=50, distances=FALSE, clustermethod=kmeansCBI, seed=1234, krange=2:7)
+#View the results
+LmSP_kmboot
+
+
+#Run bootstrapping for PAM
+LmSP_pamboot = clusterboot(LmSP, B=50, distances=FALSE, clustermethod=pamkCBI, seed=1234, krange=2:7)
+#View the results
+LmSP_pamboot
+
+
+#Run bootstrapping for hierarchical
+LmSP_hcboot = clusterboot(LmSP, B=50, distances=FALSE, clustermethod=hclustCBI, method="average", seed=1234, k=2:7)
+#View the results
+LmSP_hcboot
+
+```
+
+
+With respect to the Sporadic data, k=2 was found to be the most stable for both *k*-means and pam, with Jaccard Coefficients of 0.8930, 0.9621 and 0.9901, 0.9200, respectively.  These high values suggest the *k*-means and pam clustering algorithms resulted in stable clusters when k=2.  In contrast, k=7 was identified for hierarchical clustering, however, only two of the clusters appear to be stable based on the Jaccard Coefficient (0.9950, 0.9200, 0, 0, 0, 0, 0).  In both cases, observations associated with different outbreaks have been placed in the same cluster, which we know is not optimal.
+
+
+
+## Biological
+
+
+As the metric would imply, biological validation measures assess whether the clustering algorithm is able to produce biologically meaningful clusters, or more simply put, do the cluster assignments agree with externally available information? According to the authors, the inclusion of biological validation metrics is also novel to the *clValid* package [3].  This particular validation measure is most appropriate for micro array or RNA seq data where observations corresponds to genes.
+
+
+Two biological validation measures, the Biological Homogeneity Index (BHI) and Biological Stability Index (BSI) are available in *clValid* [3, 16].  A brief description of each metric is included below.
+
+
+**BHI**
+
+
+Measures how biologically homogeneous the clusters are with respect to the functional class (i.e., gene expression datasets).  BHI values are in the range of 0 to 1 where larger values indicate more biologically homogeneous clusters [3, 14].
+
+
+**BSI**
+
+
+Measure the stability of clusters in the biological context.  The stability of clusters containing isolates with genes demonstrating similar functional classes for the complete dataset is compared to the clustering of genes with similar functional classes where a single column has been removed [3, 16].  BSI values are in the range of 0 to 1 where larger values indicating more stable clusters [3, 16].
+
+
+What is most interesting about the biological validation metrics in *clValid* is that they can utilize of a number of annotation packages available in Bioconductor [17-19] to map the genes in a given dataset to their corresponding gene ontology (GO)[20].  Therefore, the functional class of the genes does not have to be pre-determined.    
+
+
+Although the datasets investigated in this study can be analyzed using the biological validation metrics described with the "functional class", representing the "group" to which the observations belong to (i.e., Outbreak), these metrics are considerably computationally demanding, and therefore, would require a significant amount of time to run with very little gain.  An example of the R code that could be used to run the biological validation for the Outbreak 1 dataset is shown below (but has been commented out).   
+
+
+*Outbreak 1*
+
+```{r}#
+#Append Exposure information to rownames
+LmOB2_exp = tapply(rownames(LmOB2), LmOB2_data$Group, c)
+
+#Evaluate the biological validity
+biocheck2_LmOB2 = clValid(LmOB2, nClust = 2:3, clMethods = c("hierarchical", "kmeans", "pam"), validation = "biological", annotation = LmOB2_exp)
+```
+
+
+Given the nature of the datasets explored in the current study (i.e., allele data), conducting an external validation to assess the results of the three clustering algorithms investigated in this study in comparison to the ground truth would be most appropriate.
+
+
+## External Validation
+
+
+External validation is used to compare the results of a cluster analysis to an externally known result, which is most often represented in the form of a "class label" [4, 11].
+
+
+Therefore, to assess the external validity of a cluster analysis, the ground truth with respect to the "clustering" of the data must be known (i.e., exposure), which unfortunately, isn't always available.  However, for the current study, the ground truth for the selected datasets is known, and thus, can be compared to the results of the cluster validation analyses that were previously generated.
+
+
+To conduct the external validation, a cross-tabulation between the clustering algorithm (i.e., kmeans, PAM, or hierarchical) and the ground truth (i.e., Groups) for each of the datasets is first generated, followed by the calculation of the corrected Rand Index [4, 11].  To note, "Group" represents the correct class label, which corresponds to the exposure for each of the observations included in the dataset.
+
+
+*Corrected Rand Index*
+
+
+Briefly, the corrected, or more commonly, the Adjusted Rand Index (ARI), which is an extension of the Rand Index, is a statistical measure frequently used to quantify the similarity between two clustering, taking into account the potential for grouping of the data by "chance" [21].  The Adjusted Rand Index reports values between -1 (no agreement) and 1 (perfect agreement), where a large index is desired for externally valid clusters [11, 21, 22]. 
+
+
+
+ARI = $\frac{2(ab-cd)}{(a+c)(c+b)+(a+d)(d+b)}$
+
+
++ Where
+  + a = pairs of observations that are similarily placed (i.e., in agreement) in the same cluster between clusterings
+  + d = pairs of observations that are similarily placed (i.e., in agreement) in different clusters between clusterings
+  + b = pairs of observations that are not similarily placed (i.e., disagreement) in the same cluster between clusterings
+  + c = pairs of observations that are not similarily placed (i.e., disagreement) in different clusters between clusterings
+
+
+
+*Outbreak 1*
+
+
+For the Group Assignment for Outbreak 1: RTE = Ready-to-Eat
+
+
+```{r}
+#Cross Tabulation for kmeans
+table(LmOB2_data$Group, LmOB2_km$cluster)
+
+#Convert exposures to a numeric value
+LmOB2_expnum = as.numeric(LmOB2_data$Group)
+
+#Compute the Cluster Stats
+LmOB2_kmstats = cluster.stats(d = dist(LmOB2), LmOB2_expnum, LmOB2_km$cluster)
+LmOB2_kmstats
+```
+
+
+From the cross-tabulation table it is apparent that the observations associated with the RTE Meat Outbreak are placed in the wrong cluster.  These results are not in agreement with the ground truth, which is supported by an extremely low corrected Rand Index (0.0072).
+
+
+```{r}
+#Re-evaluate with k=3, which was determined to be most stable by the clusterboot function
+table(LmOB2_data$Group, LmOB2_kmboot$partition)
+
+#Compute the Cluster Stats
+LmOB2_kbootstats = cluster.stats(d = dist(LmOB2), LmOB2_expnum, LmOB2_kmboot$partition)
+LmOB2_kbootstats
+```
+
+
+The ARI (0.3635) slightly increased for the *k*-means cluster algorithm when k was increased to 3, which is likely due to the fact that the observations associated with each outbreak were clustered separately.  However, the observations associated with the RTE outbreak were split across two clusters.
+
+
+```{r}
+#Cross Tabulation for PAM
+table(LmOB2_data$Group, LmOB2_pam$clustering)
+
+#Compute the Cluster Stats
+LmOB2_pamstats = cluster.stats(d = dist(LmOB2), LmOB2_expnum, LmOB2_pam$clustering)
+LmOB2_pamstats
+
+```
+
+
+From the cross-tabulation table it is apparent that the observations are well separated according to exposure, however, the observations associated with the RTE outbreak are spread out across 4 clusters (i.e., clusters 1-4) and the observations associated with the leafy green outbreak are spread out over two clusters (i.e., clusters 4-6).  These results are not in agreement with the ground truth, which is further supported by a low Adjusted Rand Index (0.2977).
+
+
+```{r}
+#Re-evaluate with k=2, which was determined to be most stable by the clusterboot function
+#Cross Tabulation for PAM
+table(LmOB2_data$Group, LmOB2_pamboot$partition)
+
+#Compute the Cluster Stats
+LmOB2_pambootstats = cluster.stats(d = dist(LmOB2), LmOB2_expnum, LmOB2_pamboot$partition)
+LmOB2_pambootstats
+```
+
+
+When k=2 was run for the PAM clustering algorithm, perfect agreement between the clustering and the ground truth was obtained (ARI=1).  
+
+
+```{r}
+#Cross Tabulation for Hierarchical
+table(LmOB2_data$Group, LmOB2_hc$cluster)
+
+#Compute the Cluster Stats
+LmOB2_hcstats = cluster.stats(d = dist(LmOB2), LmOB2_expnum, LmOB2_hc$cluster)
+LmOB2_hcstats
+#Use the same exposure variable generated above
+```
+
+
+From the cross-tabulation table it is apparent that the observations are well separated according to exposure, however, the observations associated with the RTE outbreak are spread out across 5 clusters (i.e., clusters 1-5) and the observations associated with the leafy green outbreak (LG) are spread out over two clusters (i.e., clusters 6-7).  These results suggest that hierarchical clustering, although better than *K*-means and PAM clustering, is still not optimal (ARI = 0.3175).
+
+
+
+```{r}
+#Re-evaluate with k=2
+
+#Cross Tabulation for Hierarchical
+table(LmOB2_data$Group, LmOB2_hc2$cluster)
+
+#Compute the Cluster Stats
+LmOB2_hcstats2 = cluster.stats(d = dist(LmOB2), LmOB2_expnum, LmOB2_hc2$cluster)
+LmOB2_hcstats2
+#Use the same exposure variable generated above
+```
+
+
+Following re-evaluation of the previous analysis with k=2, the cross-tabulation and Adjusted Rand Index (ARI=1) suggest a perfect agreement between the two clustering.
+
+
+*Sporadic*
+
+
+To note: the R code below WILL NOT run for datasets that DO NOT contain clusters.  This is due to the fact that the Adjusted Rand Index (ARI) is calculated based on the number of pairs of observations in the same cluster or in different clusters among partitions, and therefore, if no pairs are present, the index cannot be calculated.
+
+
+```{r}#
+#Cross Tabulation for kmeans
+
+table(LmSP_data$Group, LmSP_km$cluster)
+
+#Convert exposures to a numeric value
+LmSP_expnum = as.numeric(LmSP_data$Group)
+LmSP_expnum
+
+#Compute the Cluster Stats
+LmSP_kmstats = cluster.stats(d = dist(LmSP), LmSP_expnum, LmSP_km$cluster)
+LmSP_kmstats
+```
+
+```{r}#
+#Cross Tabulation for PAM
+table(LmSP_data$Group, LmSP_pam$clustering)
+
+#Convert exposures to a numeric value
+LmSP_expnum = as.numeric(LmSP_data$Group)
+LmSP_expnum
+
+#Compute the Cluster Stats
+LmSP_pamstats = cluster.stats(d = dist(LmSP), LmSP_expnum, LmSP_pam$clustering)
+LmSP_pamstats
+```
+
+```{r}#
+#Cross Tabulation for hierarchical
+table(LmSP_data$Group, LmSP_hc$cluster)
+
+#Convert exposures to a numeric value
+LmSP_expnum = as.numeric(LmSP_data$Group)
+LmSP_expnum
+
+#Compute the Cluster Stats
+LmSP_pamstats = cluster.stats(d = dist(LmSP), LmSP_expnum, LmSP_hc$cluster)
+LmSP_pamstats
+```
+
+
+## Discussion
+
+
+Overall, the optimal clustering solution for Outbreak 1 was determined to be hierarchical with k=2 using the *clValid* R package.  From the analyses, it is apparent that *clValid* can be extremely useful, particularly if the dataset contains clusters, as the tool was able to identify the optimal number of clusters and clustering algorithm with a single line of code for the Outbreak 1 dataset.  With respect to the Sporadic dataset, it appeared that k=2 was also considered to be "optimal".  However, as the number of clusters increased, the validation measures were also observed to improve.  Therefore, had a larger range of clusters been investigated, *clValid* may have reported a more appropriate clustering solution for the Sporadic dataset. 
+
+
+Unlike *clValid*, the other R packages investigated in this study, including *fpc* and *factoextra*, required the user to test each combination of clustering algorithm and cluster number separately, and then manually assess all results to determine the "optimal" clustering algorithm and corresponding number of clusters.  Such an approach is both time-consuming, and challenging.  
+
+
+Although a promising tool for cluster validation, *clValid* as it currently stands, is quite resource intensive.  As stated previously, based on the computational demands of the stability validation measure (which the authors of *clValid* failed to mention), which can take several hours to run, the R code had to be executed as a batch command in a conda environment using a high computing cluster hosted at the National Microbiology Laboratory (i.e., Waffles).  On average, the analyses took ~ 13 to 15 hours with 32 GB of RAM to assess three clustering algorithms over a range of 2 to 7 clusters.  
+
+
+Similarly, as reported in a recent study, the average analyses time to assess all currently available clustering algorithms in the *clValid* package (i.e., 10 algorithms in total) with a cluster size of k=2 was reported to take up to 92 hours using 32 GB of RAM [14]. Since the common laptop has a maximum of 16GB of RAM, running such an analyses would be extremely time-consuming, and therefore, would not be suitable for time-sensitive analyses unless access to a high computing cluster (HPC) is available.  To encourage widespread use of the *clValid* package, it would be beneficial for the authors to incorporate some type of functionality that would enable the code to run more efficiently in order to increase the speed of the analysis and return of results.
+
+
+Evaluating a combination of validation measures proved to be useful in the current study as conflicting results were often reported by either *clValid*, or the combination of *fpc* and *factoextra*.  Therefore, using a variety of measures will help prevent incorrect assumptions about the "optimal" clustering solution, ultimately leading to more informed decisions about the most appropriate method for a given dataset.  It is important to note that the validation measures investigated in the current study do not represent an exhaustive list, and therefore, other validation metrics may be equally useful.   
+
+
+Despite the overall utility of *clValid*, it is important to note that the optimal scores reported by the tool are not always in agreement with respect to the optimal clustering algorithm and number of clusters across all validation measures (as was seen in the current study).  This finding highlights the complexity of selecting the "best" algorithm based on the optimal scores reported by *clValid*.   Since these "optimal" scores can differ between validation metrics, it can become quite confusing as to which combination of clustering method and cluster number is the most suitable for a given dataset.
+
+
+Although not evaluated as part of the current study, a recently developed R package, *optCluster* [14] is claimed to be able to use the output generated by *clValid* to return a SINGLE "optimal" clustering algorithm and cluster number based on the validation metrics that were investigated.  This functionality would essentially overcome the tedious task of visually inspecting the results to determine the "optimal" clustering solution when a number of different combinations of clustering algorithms and cluster numbers are reported by *clValid*.     
+
+
+To conclude, cluster validation is an extremely important step in the cluster analysis workflow.  Since clustering is a predictive method, there technically is no "correct" answer with respect to the best clustering solution (i.e., clustering algorithm and number of clusters) for a given dataset, however, cluster validation can provide valuable insight as to which algorithm would be the most appropriate for each unique situation.  Although cluster validation can be more time-consuming than the actual act of clustering the data, it is a necessary process that must be adopted in order to obtain the most meaningful results from the data.  Therefore, strong efforts should be made by researchers to implement a routine validation step in their cluster analysis workflow. 
+
+
+## References
+
+[1] Handl, J., Knowles, J., & Kell, D. B. (2005). Computational cluster validation in post-genomic data analysis. Bioinformatics, 21(15), 3201–3212. https://doi.org/10.1093/bioinformatics/bti517
+
+[2] Holmes, S., & Huber, W. (n.d.). Home | Modern Statistics for Modern Biology. Retrieved from http://web.stanford.edu/class/bios221/book/
+
+[3] Brock, G., Pihur, V., Datta, S., & Datta, S. (2008). clValid: An R Package for Cluster Validation. Journal of Statistical Software, 25(1), 1–22. https://doi.org/10.18637/jss.v025.i04
+
+[4] Hassani, M., & Seidl, T. (2017). Using internal evaluation measures to validate the quality of diverse stream clustering algorithms. Vietnam Journal of Computer Science, 4(3), 171–183. https://doi.org/10.1007/s40595-016-0086-9
+
+[5] R Core Team (2012). R: A Language and Environment for Statistical Computing. R Foundation for Statistical Computing, Vienna, Austria. http://www.R-project.org
+
+[6] Hennig, C. (2019). fpc: Flexible Procedures for Clustering (Version 2.2-3). Retrieved from https://CRAN.R-project.org/package=fpc
+
+[7] Kassambara, A., & Mundt, F. (2017). factoextra: Extract and Visualize the Results of Multivariate Data Analyses (Version 1.0.5). Retrieved from https://CRAN.R-project.org/package=factoextra
+
+[8] Charrad, M., Ghazzali, N., Boiteau, V., & Niknafs, A. (2014). NbClust: An R Package for Determining the Relevant Number of Clusters in a Data Set. Journal of Statistical Software, 61, 1–36. https://doi.org/10.18637/jss.v061.i06
+
+[9] Nieweglowski, L. (2013). clv: Cluster Validation Techniques (Version 0.3-2.1). Retrieved from https://CRAN.R-project.org/package=clv
+
+[10] Nadon, C., Van Walle, I., Gerner-Smidt, P., Campos, J., Chinen, I., Concepcion-Acevedo, J., Gilpin, B., Smith, A.M., Man Kam, K., Perez, E., et al. (2017). PulseNet International: Vision for the implementation of whole genome sequencing (WGS) for global food-borne disease surveillance. Euro Surveill. Bull. Eur. Sur Mal. Transm. Eur. Commun. Dis. Bull. 22.
+
+[11] Cluster Validation Statistics: Must Know Methods. (n.d.). Retrieved November 26, 2019, from Datanovia website: https://www.datanovia.com/en/lessons/cluster-validation-statistics-must-know-methods/
+
+[12] Rousseeuw, P. J. (1987). Silhouettes: A graphical aid to the interpretation and validation of cluster analysis. Journal of Computational and Applied Mathematics, 20, 53–65. https://doi.org/10.1016/0377-0427(87)90125-7
+
+[13] Dunn, J. C. (2008). Well-Separated Clusters and Optimal Fuzzy Partitions. Cybernetics and Systems, 4, 95–104. https://doi.org/10.1080/01969727408546059
+
+[14] Sekula, M., Datta, S., & Datta, S. (2017). optCluster: An R Package for Determining the Optimal Clustering Algorithm. Bioinformation, 13(3), 101–103. https://doi.org/10.6026/97320630013101
+
+[15] TagTeam: Bootstrap Evaluation of Clusters—R-bloggers—Statistics and Visualization. (n.d.). Retrieved November 28, 2019, from http://tagteam.harvard.edu/hub_feeds/1981/feed_items/2126110
+
+[16] Datta, S., & Datta, S. (2006). Methods for evaluating clustering algorithms for gene expression data using a reference set of functional classes. BMC Bioinformatics, 7(1), 397. https://doi.org/10.1186/1471-2105-7-397
+
+[17] Bioconductor—Home. (n.d.). Retrieved November 27, 2019, from https://www.bioconductor.org/
+
+[18] Gentleman, R. (2019). annotate: Annotation for microarrays (Version 1.64.0). https://doi.org/10.18129/B9.bioc.annotate
+
+[19] Gentleman, R., Carey, V., Morgan, M., & Falcon, S. (2019). Biobase: Biobase: Base functions for Bioconductor (Version 2.46.0). https://doi.org/10.18129/B9.bioc.Biobase
+
+[20] Carlson M (2019). GO.db: A set of annotation maps describing the entire Gene Ontology. R package version 3.8.2. http://bioconductor.org/packages/GO.db/
+
+[21] Hubert,A. (1985) Comparing partitions. J. Classif., 2, 193–198.
+
+[22] Rand index. (2019). In Wikipedia. Retrieved from https://en.wikipedia.org/w/index.php?title=Rand_index&oldid=909008884

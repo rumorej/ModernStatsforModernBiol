@@ -1,0 +1,117 @@
+
+R version 3.5.1 (2018-07-02) -- "Feather Spray"
+Copyright (C) 2018 The R Foundation for Statistical Computing
+Platform: x86_64-conda_cos6-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(clValid)
+Loading required package: cluster
+> library(dplyr)
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+> library(tidyr)
+> 
+> #Load data and set row.name to Isolate and replace ? with NA's
+> LmOB2_data = read.csv("./LmOutbreakData.csv", row.names = "Isolate", na.strings = "?")
+> 
+> #Remove categorial variables
+> LmOB2_subdata = subset(LmOB2_data, select = -c(Group))
+> 
+> 
+> #Check data for NA's
+> table(is.na(LmOB2_subdata)) #20896 NA's in the dataset; these actually represent NO allele call for a particular locus
+
+ FALSE   TRUE 
+222120  20896 
+> 
+> #Replace NA's with 99 (i.e., use an arbitrary # that is not already represented in the dataset)
+> LmOB2_clean = replace(LmOB2_subdata, is.na(LmOB2_subdata), 99L) 
+> 
+> # Identify which columns (i.e., loci) have zero variance 
+> which(apply(LmOB2_clean, 2, var)==0)
+LMO00125 LMO00277 LMO00417 LMO00474 LMO00708 LMO01547 LMO01576 LMO01681 
+      27       94      222      279      489     1299     1328     1433 
+LMO02028 LMO02758 LMO02819 LMO02820 LMO02825 LMO02827 LMO02834 LMO02835 
+    1777     2457     2517     2518     2523     2525     2532     2533 
+LMO02839 LMO03064 LMO03161 LMO03384 LMO03891 LMO03908 LMO04070 LMO04503 
+    2537     2760     2840     2899     3027     3037     3199     3243 
+LMO04531 
+    3256 
+> 
+> #Example of Locus LMO00125, which has zero variance
+> summary(LmOB2_clean$LMO00125)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+      1       1       1       1       1       1 
+> 
+> #Remove columns with 0 variance as it is problematic for downstreamn analyses
+> LmOB2 = LmOB2_clean[ ,apply(LmOB2_clean, 2, var) !=0]
+> #replacing with zero proved to cause internal issues with the clustering algorithms so 99 is being used; less problematic
+> #L is used to change the objects from dbl integer to interger, which also proved to be an issue for downstream analyses
+> 
+> #Stability Check for 2 to 7 clusters for 3 clustering methods
+> scheck_LmOB2 = clValid(LmOB2, nClust = 2:7, clMethods = c("hierarchical", "kmeans", "pam"), validation = "stability")
+> summary(scheck_LmOB2)
+
+Clustering Methods:
+ hierarchical kmeans pam 
+
+Cluster sizes:
+ 2 3 4 5 6 7 
+
+Validation Measures:
+                         2        3        4        5        6        7
+                                                                       
+hierarchical APN    0.0000   0.0000   0.0000   0.0000   0.0000   0.0004
+             AD   735.2664 699.2304 493.4437 473.7424 456.6994 440.6808
+             ADM    0.0000   0.0000   0.0000   0.0000   0.0000   0.5990
+             FOM    4.3440   3.7599   2.7370   2.5554   2.4702   2.4721
+kmeans       APN    0.0000   0.0000   0.0000   0.0000   0.0000   0.0023
+             AD   735.2664 699.2304 493.4437 470.1727 445.4556 433.2323
+             ADM    0.0000   0.0000   0.0000   0.0000   0.0000   1.2347
+             FOM    4.3440   3.7599   2.7370   2.5565   2.4810   2.4730
+pam          APN    0.0000   0.0000   0.0000   0.0000   0.0000   0.0000
+             AD   735.2664 529.9793 494.7902 458.1322 438.4309 421.3878
+             ADM    0.0000   0.0000   0.0000   0.0000   0.0000   0.0000
+             FOM    4.3440   3.3386   3.1253   2.5209   2.3362   2.2481
+
+Optimal Scores:
+
+    Score    Method       Clusters
+APN   0.0000 hierarchical 2       
+AD  421.3878 pam          7       
+ADM   0.0000 hierarchical 2       
+FOM   2.2481 pam          7       
+
+> optimalScores(scheck_LmOB2)
+         Score       Method Clusters
+APN   0.000000 hierarchical        2
+AD  421.387822          pam        7
+ADM   0.000000 hierarchical        2
+FOM   2.248107          pam        7
+> 
+> 
+> proc.time()
+     user    system   elapsed 
+51787.683    84.545 51859.597 
